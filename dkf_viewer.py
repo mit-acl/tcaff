@@ -116,7 +116,7 @@ if __name__ == '__main__':
         LDAs.append(LocalDataAssociation())
     detector = PersonDetector()
 
-    SKIP_FRAMES = 12
+    SKIP_FRAMES = 3
     COLORS = [(255,0,0), (0,255,0), (0,0,255), (255, 255, 255)]
 
     framenum = -1
