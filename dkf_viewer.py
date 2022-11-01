@@ -6,6 +6,7 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 
 from person_detector import PersonDetector
+from lda import LocalDataAssociation
 
 
 def getHomographies():
@@ -70,10 +71,12 @@ def getMarkerType(cam):
     if cam == 3:
         return cv.MARKER_TRIANGLE_UP
 
+# TODO: Figure out why the scale seems so weird (why is each )
+
 def projectToGroundPlane(x, y, H):
     pt = H @ np.r_[x, y, 1]
     pt /= pt[2]
-    pt = pt.astype(int)
+    # pt = pt.astype(int)
     pt = (pt[0], pt[1])
     return pt
 
@@ -108,8 +111,12 @@ if __name__ == '__main__':
     caps = getVideos(root)
     GTs = getAnnotations(root)
     Hs = getHomographies()
+    LDAs = []
+    for i in range(numCams):
+        LDAs.append(LocalDataAssociation())
     detector = PersonDetector()
 
+    SKIP_FRAMES = 12
     COLORS = [(255,0,0), (0,255,0), (0,0,255), (255, 255, 255)]
 
     framenum = -1
@@ -119,9 +126,7 @@ if __name__ == '__main__':
         framenum += 1
 
         current_frames = []
-        Zs = []
-        for i, (cap, GT, H) in enumerate(zip(caps, GTs, Hs)):
-            Zs.append([])
+        for i, (cap, GT, H, LDA) in enumerate(zip(caps, GTs, Hs, LDAs)):
 
             ret, frame = cap.read()
 
@@ -143,22 +148,30 @@ if __name__ == '__main__':
                     x, y = x0 + (x1 - x0) / 2, y1
 
                     if warpcams:
-                        pt = H @ np.r_[x, y, 1]
-                        pt /= pt[2]
-                        pt = pt.astype(int)
-                        pt = (pt[0], pt[1])
+                        pt = projectToGroundPlane(x,y,H)
+                        pt = (int(pt[0]), int(pt[1]))
                     else:
                         pt = int(x), int(y)
 
                     cv.drawMarker(frame, pt, getTrackColor(int(id)), getMarkerType(i))
                     # cv.rectangle(frame, (int(x0), int(y0)), (int(x1), int(y1)), (255,0,0), 4)
 
-            if framenum % 10 == 0:
+            if framenum % SKIP_FRAMES == 0:
+                Zs = []
                 boxes = detector.get_person_boxes(frame)
                 for box in boxes:
-                    Zs[i].append(box.tolist())
                     x0, y0, x1, y1 = box.tolist()
-                    cv.rectangle(frame, (int(x0),int(y0)), (int(x1),int(y1)), (255,0,0), 4)
+                    center_x, x, y = x0 + (x1 - x0) / 2, x0, y1
+                    center_pt = projectToGroundPlane(center_x, y, H)
+                    edge_pt = projectToGroundPlane(x, y, H)
+                    width = 2*np.linalg.norm(np.array(center_pt)-np.array(edge_pt)) # probably something I could do better to find the true distance better
+                    # TODO: Figure out how to get actual height
+                    ratio_camera2real = width/(x1-x0)
+                    height = abs(ratio_camera2real * (y1-y0))
+                    Zs.append(np.array([[center_pt[0], center_pt[1], width, height]]).T)
+                    cv.rectangle(frame, (int(x0),int(y0)), (int(x1),int(y1)), (255,0,0), 2)
+
+                LDA.update_measurements(Zs)   
 
                 cv.imshow(f"frame{i}", frame)
 
@@ -175,7 +188,7 @@ if __name__ == '__main__':
         else:
             combined = topview.copy()
 
-            for i, (GT, Z_cam, H, color) in enumerate(zip(GTs, Zs, Hs, COLORS)):
+            for i, (GT, LDA, H) in enumerate(zip(GTs, LDAs, Hs)):
 
                 # get ground truth annotations of this frame
                 gt = GT[GT[:,5]==framenum,:]
@@ -186,21 +199,21 @@ if __name__ == '__main__':
                     if not lost and not occluded:
                         x, y = x0 + (x1 - x0) / 2, y1
                         pt = projectToGroundPlane(x, y, H)
+                        pt = (int(pt[0]), int(pt[1]))
 
                         cv.drawMarker(combined, pt, getTrackColor(int(id)), getMarkerType(i))
 
-                for Z in Z_cam:
-                    x0, y0, x1, y1 = Z
-                    center_x, x, y = x0 + (x1 - x0) / 2, x0, y1
-                    center_pt = projectToGroundPlane(center_x, y, H)
-                    edge_pt = projectToGroundPlane(x, y, H)
-                    radius = np.linalg.norm(np.array(center_pt)-np.array(edge_pt)).astype(int) # probably something I could do better to find the true distance better
-                    cv.circle(combined, center_pt, radius, (255,0,0), 4)
 
-            if framenum % 10 == 0:
+                Xs, colors = LDA.get_trackers()   
+
+                for X, color in zip(Xs, colors):
+                    x, y, w, h, _, _ = X.reshape(-1).tolist()
+                    cv.circle(combined, (int(x),int(y)), int(w/2), color, 4)
+
+            if framenum % SKIP_FRAMES == 0:
                 cv.imshow('groundtruth', combined)
 
-        if framenum % 10 == 0:
+        if framenum % SKIP_FRAMES == 0:
             cv.waitKey(50)
         else:
             cv.waitKey(15)
