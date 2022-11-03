@@ -6,7 +6,7 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 
 from person_detector import PersonDetector
-from lda import LocalDataAssociation
+from camera import Camera
 
 
 def getHomographies():
@@ -111,12 +111,12 @@ if __name__ == '__main__':
     caps = getVideos(root)
     GTs = getAnnotations(root)
     Hs = getHomographies()
-    LDAs = []
+    agents = []
     for i in range(numCams):
-        LDAs.append(LocalDataAssociation())
+        agents.append(Camera(i))
     detector = PersonDetector()
 
-    SKIP_FRAMES = 3
+    SKIP_FRAMES = 15
     COLORS = [(255,0,0), (0,255,0), (0,0,255), (255, 255, 255)]
 
     framenum = -1
@@ -126,7 +126,8 @@ if __name__ == '__main__':
         framenum += 1
 
         current_frames = []
-        for i, (cap, GT, H, LDA) in enumerate(zip(caps, GTs, Hs, LDAs)):
+        observations = []
+        for i, (cap, GT, H, a) in enumerate(zip(caps, GTs, Hs, agents)):
 
             ret, frame = cap.read()
 
@@ -171,9 +172,14 @@ if __name__ == '__main__':
                     Zs.append(np.array([[center_pt[0], center_pt[1], width, height]]).T)
                     cv.rectangle(frame, (int(x0),int(y0)), (int(x1),int(y1)), (255,0,0), 2)
 
-                LDA.update_measurements(Zs)   
+                a.local_data_association(Zs)
+                observations += a.get_observations()  
 
                 cv.imshow(f"frame{i}", frame)
+
+        for a in agents:
+            a.add_observations(observations)
+            a.dkf()
 
         if framenum == 0:
             α = 1. / len(firstframes)
@@ -188,7 +194,7 @@ if __name__ == '__main__':
         else:
             combined = topview.copy()
 
-            for i, (GT, LDA, H) in enumerate(zip(GTs, LDAs, Hs)):
+            for i, (GT, a, H) in enumerate(zip(GTs, agents, Hs)):
 
                 # get ground truth annotations of this frame
                 gt = GT[GT[:,5]==framenum,:]
@@ -204,7 +210,7 @@ if __name__ == '__main__':
                         cv.drawMarker(combined, pt, getTrackColor(int(id)), getMarkerType(i))
 
 
-                Xs, colors = LDA.get_trackers()   
+                Xs, colors = a.get_trackers()   
 
                 for X, color in zip(Xs, colors):
                     x, y, w, h, _, _ = X.reshape(-1).tolist()
