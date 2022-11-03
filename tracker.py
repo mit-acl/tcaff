@@ -27,6 +27,8 @@ class Tracker():
         self.Ts = Ts
         self.color = (np.random.randint(0,255), np.random.randint(0,255), np.random.randint(0,255))
 
+        self.predict()
+
     @property
     def state(self):
         return self._state
@@ -81,7 +83,7 @@ class Tracker():
         self.U[self._id[0]] = self.H.T @ inv(self.R) @ self.H
 
     def observation_update(self, observation_msg):
-        self.xhat[observation_msg.tracker_id[0]] = observation_msg.xhat
+        self.xbar[observation_msg.tracker_id[0]] = observation_msg.xbar
         self.u[observation_msg.tracker_id[0]] = observation_msg.u
         self.U[observation_msg.tracker_id[0]] = observation_msg.U
     
@@ -117,6 +119,8 @@ class Tracker():
         self.P = self.A @ M @ self.A.T + self.Q
         self.V = self.P[0:2,0:2] + self.R[0:2,0:2]
 
+    def __str__(self):
+        return f'{self._id}, state: {self._state.T}, measurement: {self._measurement.T}'
 
 # class ManagedTracker():
 

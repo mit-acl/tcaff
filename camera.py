@@ -14,6 +14,7 @@ class Camera():
         self.n_meas_to_init_tracker = 2
         self.camera_id = camera_id
         self.tracker_mapping = dict()
+        self.unassociated_obs = []
 
     def local_data_association(self, Zs):
         geometry_scores = dict()
@@ -47,6 +48,7 @@ class Camera():
         for tracker in self.new_trackers:
             if tracker.frames_seen >= self.n_meas_to_init_tracker:
                 self.trackers.append(tracker)
+                self.tracker_mapping[tracker.id] = tracker.id
                 self.new_trackers.remove(tracker)
             elif not tracker.seen:
                 self.new_trackers.remove(tracker)
@@ -71,6 +73,63 @@ class Camera():
         for tracker in self.trackers + self.new_trackers:
             tracker.correction()
 
+    def tracker_manager(self):
+        tracked_states = []
+        for tracker in self.trackers:
+            m = tracker.observation_msg()
+            m.xbar = tracker.state
+            tracked_states.append(m)
+        geometry_scores = np.zeros((len(self.unassociated_obs), len(self.unassociated_obs + tracked_states)))
+        for i in range(len(self.unassociated_obs)):
+            xi_xy = self.unassociated_obs[i].xbar[0:2,:]
+            for j in range(len(self.unassociated_obs)):
+                if i == j:
+                    continue
+                if self.unassociated_obs[i].tracker_id[0] == self.unassociated_obs[j].tracker_id[0]: # same camera
+                    geometry_scores[i,j] = 1
+                    continue
+                xj_xy = self.unassociated_obs[j].xbar[0:2,:]
+                # Mahalanobis distance
+                d = np.sqrt((xi_xy - xj_xy).T @ (xi_xy - xj_xy)).item(0)
+                
+                # Geometry similarity value
+                s_d = 1/self.alpha*d if d < self.Tau else 1
+                geometry_scores[i,j] = s_d
+            for j in range(len(tracked_states)):
+                j_gs = j+len(self.unassociated_obs) # j for indexing into geometry_scores
+                # if self.unassociated_obs[i].tracker_id[0] == tracked_states[j].tracker_id[0]: # same camera
+                #     geometry_scores[i,j] = 1
+                #     continue
+                xj_xy = tracked_states[j].xbar[0:2,:]
+                # Mahalanobis distance
+                d = np.sqrt((xi_xy - xj_xy).T @ (xi_xy - xj_xy)).item(0)
+                
+                # Geometry similarity value
+                s_d = 1/self.alpha*d if d < self.Tau else 1
+                geometry_scores[i,j_gs] = s_d
+
+        # TODO:
+        # Add in support for feature matching too
+
+        tracker_groups = self._get_tracker_groups(geometry_scores)
+        
+        # print(tracker_groups)
+        # making sure we didn't associate a camera tracker with a tracker from same camera
+        for i in range(len(self.unassociated_obs)):
+            for j in range(len(self.unassociated_obs)):
+                if i == j: continue
+                # TODO: this is only checking half of the partition...
+                if self.unassociated_obs[i].tracker_id[0] == self.unassociated_obs[j].tracker_id[0]:
+                    for g in tracker_groups:
+                        assert not(i in g and j in g)
+
+        self._create_trackers(tracker_groups, tracked_states)
+        unassociated_obs = self.unassociated_obs
+        len_unassociated_obs = self.add_observations(unassociated_obs)
+        # print(unassociated_obs)
+        assert len_unassociated_obs == 0
+
+
     def get_observations(self):
         observations = []
         for tracker in self.trackers:
@@ -78,19 +137,107 @@ class Camera():
         return observations
 
     def add_observations(self, observations):
+        self.unassociated_obs = []
         for obs in observations:
-            if obs.tracker_id[0] == self.camera_id: continue
-            # TODO: Change this as soon as the tracker manager is implemented.
-            if obs.tracker_id not in self.tracker_mapping: continue
-            target_tracker_id = self.tracker_mapping[obs.tracker_id]
-            [tracker_idx for tracker_idx, tracker in enumerate(self.trackers) if tracker.id == target_tracker_id]
-            self.trackers[tracker_idx].observation_update(obs)
+            if obs.tracker_id in self.tracker_mapping: 
+                target_tracker_id = self.tracker_mapping[obs.tracker_id]
+                # print(target_tracker_id)
+                for tracker in self.trackers:
+                    if tracker.id == target_tracker_id:
+                        tracker.observation_update(obs)
+                        break                
+            else: 
+                self.unassociated_obs.append(obs)
+        return len(self.unassociated_obs)
             
     def get_trackers(self):
         # TODO: change what we're returning here
         Xs = []
         colors = []
         for tracker in self.trackers:
-            Xs.append(tracker.state)
-            colors.append(tracker.color)
+            if tracker.id[0] == self.camera_id: # only return local trackers
+                Xs.append(tracker.state)
+                colors.append(tracker.color)
+        # print(Xs)
         return Xs, colors
+
+    def _get_tracker_groups(self, geometry_scores):
+        tracker_groups = []
+        new_tracker_groups = []
+        for i in range(geometry_scores.shape[0]):
+            group = set()
+            for j in range(geometry_scores.shape[1]):
+                if geometry_scores[i,j] < 1:
+                    group.add(j)
+            tracker_groups.append(group)
+
+        while tracker_groups: 
+            g1 = tracker_groups.pop(0)
+            added = []
+            for member in g1:
+                for g2 in new_tracker_groups:
+                    if member in g2:
+                        new_tracker_groups.remove(g2)
+                        g2 = g2.union(g1)
+                        new_tracker_groups.append(g2)
+                        added.append(g2)
+            if not added:
+                new_tracker_groups.append(g1)
+            elif len(added) == 1:
+                continue
+            else:
+                for g in added[1:]:
+                    new_tracker_groups.remove(added[0])
+                    if g in new_tracker_groups:
+                        new_tracker_groups.remove(g)
+                    added[0] = added[0].union(g)
+                    new_tracker_groups.append(added[0])
+        # print(geometry_scores)
+        # print(new_tracker_groups)
+        return new_tracker_groups
+    
+    def _create_trackers(self, tracker_groups, tracked_states):
+        for group in tracker_groups:
+            local_tracker_id = None
+            mean_xbar = np.zeros((6,1))
+            group_size = 0
+            for index in group:
+                if index >= len(self.unassociated_obs):
+                    local_tracker_id = tracked_states[index-len(self.unassociated_obs)].tracker_id
+                    # print('uh huh')
+                    continue
+                if self.unassociated_obs[index].tracker_id[0] == self.camera_id:
+                    local_tracker_id = self.unassociated_obs[index].tracker_id
+                    # print('yep')
+                mean_xbar += self.unassociated_obs[index].xbar
+                group_size += 1
+            if local_tracker_id == None:
+                # print('you got me')
+                mean_xbar /= group_size
+                local_tracker_id = (self.camera_id, self.next_available_id)
+                new_tracker = Tracker(self.camera_id, self.next_available_id, mean_xbar[0:4,:])
+                self.trackers.append(new_tracker)
+                self.next_available_id += 1
+
+            for index in group:
+                if index >= len(self.unassociated_obs):
+                    continue
+                self.tracker_mapping[self.unassociated_obs[index].tracker_id] = local_tracker_id
+            
+    def __str__(self):
+        return_str = ''
+        return_str += f'Camera {self.camera_id}\n'
+        if self.trackers:
+            return_str += 'Trackers:\n'
+            for t in self.trackers:
+                return_str += f'\t{t}\n'
+        if self.new_trackers:
+            return_str += 'New Trackers:\n'
+            for t in self.new_trackers:
+                return_str += f'\t{t}\n'
+        if self.tracker_mapping:
+            return_str += 'Mappings:\n'
+            for global_t, local_t in self.tracker_mapping.items():
+                return_str += f'\t{global_t} --> {local_t}\n'
+        # return_str += ''
+        return return_str

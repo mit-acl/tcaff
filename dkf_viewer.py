@@ -116,18 +116,27 @@ if __name__ == '__main__':
         agents.append(Camera(i))
     detector = PersonDetector()
 
-    SKIP_FRAMES = 15
+    SKIP_FRAMES = 1
     COLORS = [(255,0,0), (0,255,0), (0,0,255), (255, 255, 255)]
 
     framenum = -1
     firstframes = []
     warpcams = False
     while caps[0].isOpened():
+        if framenum == 0:
+            framenum = 60
         framenum += 1
+        # print('//////////////////////////////////////////////////')
+        # print(f'framenum: {framenum}')
+        # print('//////////////////////////////////////////////////\n')
 
         current_frames = []
         observations = []
         for i, (cap, GT, H, a) in enumerate(zip(caps, GTs, Hs, agents)):
+
+            if framenum == 0:
+                for j in range(60):
+                    cap.read()
 
             ret, frame = cap.read()
 
@@ -177,9 +186,12 @@ if __name__ == '__main__':
 
                 cv.imshow(f"frame{i}", frame)
 
-        for a in agents:
-            a.add_observations(observations)
-            a.dkf()
+        if framenum % SKIP_FRAMES == 0:
+            for a in agents:
+                a.add_observations(observations)
+                a.dkf()
+                a.tracker_manager()
+                # print(a)
 
         if framenum == 0:
             α = 1. / len(firstframes)
