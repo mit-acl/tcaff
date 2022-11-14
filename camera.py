@@ -17,6 +17,8 @@ class Camera():
         self.unassociated_obs = []
 
     def local_data_association(self, Zs):
+        for tracker in self.trackers + self.new_trackers:
+            tracker.cycle()
         geometry_scores = dict()
         for tracker in self.trackers + self.new_trackers:
             geometry_scores[tracker.id] = np.zeros((len(Zs)))
@@ -126,7 +128,8 @@ class Camera():
     def get_observations(self):
         observations = []
         for tracker in self.trackers:
-            observations.append(tracker.observation_msg())
+            if tracker.seen:
+                observations.append(tracker.observation_msg())
         return observations
 
     def add_observations(self, observations):

@@ -47,11 +47,12 @@ class Tracker():
 
     def predict(self):
         xhat = self._state
-        z = self._measurement
         self.xbar = dict(); self.u = dict(); self.U = dict()
         self.xbar[self._id[0]] = self.A @ xhat
-        self.u[self._id[0]] = self.H.T @ inv(self.R) @ z
-        self.U[self._id[0]] = self.H.T @ inv(self.R) @ self.H
+        if self._seen:
+            z = self._measurement
+            self.u[self._id[0]] = self.H.T @ inv(self.R) @ z
+            self.U[self._id[0]] = self.H.T @ inv(self.R) @ self.H
 
     def observation_update(self, observation_msg):
         self.xbar[observation_msg.tracker_id[0]] = observation_msg.xbar
@@ -59,11 +60,17 @@ class Tracker():
         self.U[observation_msg.tracker_id[0]] = observation_msg.U
     
     def observation_msg(self):
+        if self._seen:
+            u = self.u[self._id[0]]
+            U = self.U[self._id[0]]
+        else:
+            u = None
+            U = None
         return ObservationMsg(
             tracker_id = self._id, 
             xbar=self.xbar[self._id[0]],
-            u=self.u[self._id[0]],
-            U=self.U[self._id[0]],
+            u=u,
+            U=U,
             ell=0
         )
 
@@ -90,8 +97,13 @@ class Tracker():
         self.P = self.A @ M @ self.A.T + self.Q
         self.V = self.P[0:2,0:2] + self.R[0:2,0:2]
 
+    def cycle(self):
         self._seen = False
 
     def __str__(self):
-        return f'{self._id}, state: {np.array2string(self._state.T,precision=2)},' + \
-            f' measurement: {np.array2string(self._measurement.T,precision=2)}'
+        if self._seen:
+            return f'{self._id}, state: {np.array2string(self._state.T,precision=2)},' + \
+                f' measurement: {np.array2string(self._measurement.T,precision=2)}'
+        else:
+            return f'{self._id}, state: {np.array2string(self._state.T,precision=2)},' + \
+                f' not seen.'
