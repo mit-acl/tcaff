@@ -99,6 +99,10 @@ if __name__ == '__main__':
             type=str,
             default='calibration.txt',
             help='Ground truth calibration file')
+    parser.add_argument('-d', '--debug',
+            type=str,
+            default=None,
+            help='Print debug logging')
     args = parser.parse_args()
 
 
@@ -117,25 +121,33 @@ if __name__ == '__main__':
     detector = PersonDetector()
 
     SKIP_FRAMES = 1
+    FIRST_FRAME = 60
+    # FIRST_FRAME = 400
     COLORS = [(255,0,0), (0,255,0), (0,0,255), (255, 255, 255)]
 
     framenum = -1
     firstframes = []
     warpcams = False
+
+    if args.debug: 
+        with open(args.debug, 'w') as f:
+            print('<<<debug log>>>\n', file=f)
     while caps[0].isOpened():
         if framenum == 0:
-            framenum = 60
+            framenum = FIRST_FRAME
         framenum += 1
-        # print('//////////////////////////////////////////////////')
-        # print(f'framenum: {framenum}')
-        # print('//////////////////////////////////////////////////\n')
+        if args.debug:
+            with open(args.debug, 'a') as f:
+                print('//////////////////////////////////////////////////', file=f)
+                print(f'framenum: {framenum}', file=f)
+                print('//////////////////////////////////////////////////\n', file=f)
 
         current_frames = []
         observations = []
         for i, (cap, GT, H, a) in enumerate(zip(caps, GTs, Hs, agents)):
 
             if framenum == 0:
-                for j in range(60):
+                for j in range(FIRST_FRAME):
                     cap.read()
 
             ret, frame = cap.read()
@@ -191,7 +203,10 @@ if __name__ == '__main__':
                 a.add_observations(observations)
                 a.dkf()
                 a.tracker_manager()
-                # print(a)
+                if args.debug:
+                    with open(args.debug, 'a') as f:
+                        np.set_printoptions(precision=1)
+                        print(a, file=f)
 
         if framenum == 0:
             α = 1. / len(firstframes)
@@ -201,7 +216,7 @@ if __name__ == '__main__':
                 topview += α * cv.warpPerspective(img, H, img.shape[1::-1])
             topview = topview.astype(np.uint8)
 
-            cv.imshow('topview', topview)
+            # cv.imshow('topview', topview)
 
         else:
             combined = topview.copy()
@@ -229,7 +244,7 @@ if __name__ == '__main__':
                     cv.circle(combined, (int(x),int(y)), int(w/2), color, 4)
 
             if framenum % SKIP_FRAMES == 0:
-                cv.imshow('groundtruth', combined)
+                cv.imshow('topview', combined)
 
         if framenum % SKIP_FRAMES == 0:
             cv.waitKey(50)

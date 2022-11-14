@@ -2,11 +2,6 @@ import numpy as np
 from numpy.linalg import inv
 from observation_msg import ObservationMsg
 
-# class TrackerCandidate():
-
-#     def __init__(self, new_id, measurement):
-
-
 class Tracker():
 
     def __init__(self, camera_id, tracker_id, measurement, Ts=1):
@@ -32,10 +27,6 @@ class Tracker():
     @property
     def state(self):
         return self._state
-        # if self._state:
-        #     return self._state
-        # else:
-        #     return np.concatenate((self.measurement, np.zeros((2,1))), 0)
 
     @property
     def id(self):
@@ -49,30 +40,10 @@ class Tracker():
     def measurement(self):
         return self._measurement
 
-    # def measurement_update(self, measurement):
-    #     # if not self.initialized:
-    #     #     self.state = np.concatenate((pos, box_size, vel), axis=0)
-    #     #     self.predict()
-    #     #     self.correction()
-    #     self.measurements.append(measurement)
-    #     self._seen = True
-
     def update(self, measurement):
         self.frames_seen += 1
+        self._seen = True
         self._measurement = measurement
-        
-    def cycle(self):
-        if not self._seen:
-            self.frames_since_being_seen += 1
-        self._seen = False
-
-    # def initialize(self):
-    #     # TODO: is this right? Initial state guess comes from last two measurements?
-    #     pos = self.measurements[-1][0:2,:]
-    #     vel = (self.measurements[-1][0:2,:] - self.measurements[-2][0:2,:]) / self.Ts
-    #     box_size = np.mean((self.measurements[-1][2:4,:], self.measurements[-2][2:4,:]), axis=0)
-    #     self.state = np.concatenate((pos, box_size, vel), axis=0)
-    #     self.measurements = [self.measurements[-1]]
 
     def predict(self):
         xhat = self._state
@@ -119,40 +90,8 @@ class Tracker():
         self.P = self.A @ M @ self.A.T + self.Q
         self.V = self.P[0:2,0:2] + self.R[0:2,0:2]
 
+        self._seen = False
+
     def __str__(self):
-        return f'{self._id}, state: {self._state.T}, measurement: {self._measurement.T}'
-
-# class ManagedTracker():
-
-#     def __init__(self, local_ids):
-#         self.local_ids = {}
-#         self._state = None # first ekf run
-#         for cam_num, tracker_id in enumerate(local_ids):
-#             self.local_ids[cam_num] = tracker_id
-        
-#         self.measurements = []
-#         self.color = (np.random.randint(0,255), np.random.randint(0,255), np.random.randint(0,255))
-#         self.frames_since_being_seen = 0
-#         self.seen = True
-#         self.frames_seen = 1
-
-#     @property
-#     def state(self):
-#         return self._state
-
-#     def id(self, camera_number):
-#         return self.local_ids[camera_number]
-
-#     def next_cycle(self):
-#         if self.seen:
-#             self.frames_since_being_seen = 0
-#         else:
-#             self.frames_since_being_seen += 1
-#         self.seen = False
-#         self.measurements = []
-
-#     def update(self, measurement):
-#         # TODO: somewhere the EKF will need to happen
-#         self.measurements.append(measurement)
-#         self.seen = True
-#         self.frames_seen += 1
+        return f'{self._id}, state: {np.array2string(self._state.T,precision=2)},' + \
+            f' measurement: {np.array2string(self._measurement.T,precision=2)}'

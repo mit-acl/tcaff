@@ -4,8 +4,8 @@ from tracker import Tracker
 class Camera():
 
     def __init__(self, camera_id, Tau=.5, alpha=2000):
-        # TODO: Change this
-        Tau = 40
+        # TODO: Tune for Tau
+        Tau = 50
         self.Tau = Tau
         self.alpha = alpha
         self.trackers = []
@@ -35,11 +35,19 @@ class Camera():
 
         tracker_pairs = dict()
         Zs_associated = []
+        Z_best_set = set()
         for Z in Zs:
             Zs_associated.append(False)
         if Zs:
-            for tracker in self.trackers + self.new_trackers:
+            for i, tracker in enumerate(self.trackers + self.new_trackers):
                 Z_best_idx = np.argmin(geometry_scores[tracker.id])
+                # TODO
+                # I don't think this is the right fix... Shouldn't be needed when we are using appearance information
+                if i < len(self.trackers):
+                    Z_best_set.add(Z_best_idx)
+                elif Z_best_idx in Z_best_set: # prune new trackers that have measurements associated with a current tracker
+                    self.new_trackers.remove(tracker)
+                    continue
                 Z_best = Zs[Z_best_idx]
                 if geometry_scores[tracker.id][Z_best_idx] < 1: # TODO: should I really compare to Tau here
                     tracker.update(Z_best)
@@ -59,7 +67,6 @@ class Camera():
         # TODO:
         # tracker manager for how deleting and starting trackers actually works
 
-        self.unassociated_Zs = []
         for j, Z in enumerate(Zs):
             if not Zs_associated[j]:
                 new_tracker = Tracker(self.camera_id, self.next_available_id, Z)
@@ -75,7 +82,7 @@ class Camera():
 
     def tracker_manager(self):
         tracked_states = []
-        for tracker in self.trackers:
+        for tracker in self.trackers + self.new_trackers:
             m = tracker.observation_msg()
             m.xbar = tracker.state
             tracked_states.append(m)
@@ -84,9 +91,6 @@ class Camera():
             xi_xy = self.unassociated_obs[i].xbar[0:2,:]
             for j in range(len(self.unassociated_obs)):
                 if i == j:
-                    continue
-                if self.unassociated_obs[i].tracker_id[0] == self.unassociated_obs[j].tracker_id[0]: # same camera
-                    geometry_scores[i,j] = 1
                     continue
                 xj_xy = self.unassociated_obs[j].xbar[0:2,:]
                 # Mahalanobis distance
@@ -113,20 +117,9 @@ class Camera():
 
         tracker_groups = self._get_tracker_groups(geometry_scores)
         
-        # print(tracker_groups)
-        # making sure we didn't associate a camera tracker with a tracker from same camera
-        for i in range(len(self.unassociated_obs)):
-            for j in range(len(self.unassociated_obs)):
-                if i == j: continue
-                # TODO: this is only checking half of the partition...
-                if self.unassociated_obs[i].tracker_id[0] == self.unassociated_obs[j].tracker_id[0]:
-                    for g in tracker_groups:
-                        assert not(i in g and j in g)
-
         self._create_trackers(tracker_groups, tracked_states)
         unassociated_obs = self.unassociated_obs
         len_unassociated_obs = self.add_observations(unassociated_obs)
-        # print(unassociated_obs)
         assert len_unassociated_obs == 0
 
 
@@ -141,7 +134,6 @@ class Camera():
         for obs in observations:
             if obs.tracker_id in self.tracker_mapping: 
                 target_tracker_id = self.tracker_mapping[obs.tracker_id]
-                # print(target_tracker_id)
                 for tracker in self.trackers:
                     if tracker.id == target_tracker_id:
                         tracker.observation_update(obs)
@@ -158,7 +150,6 @@ class Camera():
             if tracker.id[0] == self.camera_id: # only return local trackers
                 Xs.append(tracker.state)
                 colors.append(tracker.color)
-        # print(Xs)
         return Xs, colors
 
     def _get_tracker_groups(self, geometry_scores):
@@ -192,8 +183,6 @@ class Camera():
                         new_tracker_groups.remove(g)
                     added[0] = added[0].union(g)
                     new_tracker_groups.append(added[0])
-        # print(geometry_scores)
-        # print(new_tracker_groups)
         return new_tracker_groups
     
     def _create_trackers(self, tracker_groups, tracked_states):
@@ -203,16 +192,23 @@ class Camera():
             group_size = 0
             for index in group:
                 if index >= len(self.unassociated_obs):
+                    if index >= len(self.unassociated_obs) + len(self.trackers):
+                        t = self.new_trackers[index-(len(self.unassociated_obs)+len(self.trackers))]
+                        self.trackers.append(t)
+                        self.tracker_mapping[t.id] = t.id
+                        self.new_trackers.remove(t)
+                    assert local_tracker_id == None or local_tracker_id == tracked_states[index-len(self.unassociated_obs)].tracker_id, \
+                         f'1: {local_tracker_id}, 2: {tracked_states[index-len(self.unassociated_obs)].tracker_id}'
                     local_tracker_id = tracked_states[index-len(self.unassociated_obs)].tracker_id
-                    # print('uh huh')
                     continue
-                if self.unassociated_obs[index].tracker_id[0] == self.camera_id:
+                elif self.unassociated_obs[index].tracker_id[0] == self.camera_id:
+                    assert local_tracker_id == None or local_tracker_id == self.unassociated_obs[index].tracker_id, \
+                        f'1: {local_tracker_id}, 2: {self.unassociated_obs[index].tracker_id}'
                     local_tracker_id = self.unassociated_obs[index].tracker_id
-                    # print('yep')
-                mean_xbar += self.unassociated_obs[index].xbar
-                group_size += 1
+                if index < len(self.unassociated_obs):
+                    mean_xbar += self.unassociated_obs[index].xbar
+                    group_size += 1
             if local_tracker_id == None:
-                # print('you got me')
                 mean_xbar /= group_size
                 local_tracker_id = (self.camera_id, self.next_available_id)
                 new_tracker = Tracker(self.camera_id, self.next_available_id, mean_xbar[0:4,:])
