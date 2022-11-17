@@ -3,11 +3,14 @@ from tracker import Tracker
 
 class Camera():
 
-    def __init__(self, camera_id, Tau=.5, alpha=2000):
+    def __init__(self, camera_id, Tau_LDA=.5, alpha=2000, kappa=2):
         # TODO: Tune for Tau
-        Tau = 50
-        self.Tau = Tau
+        Tau_LDA = 30
+        Tau_GDA = 50
+        self.Tau_LDA = Tau_LDA
+        self.Tau_GDA = Tau_GDA
         self.alpha = alpha
+        self.kappa = kappa
         self.trackers = []
         self.new_trackers = []
         self.next_available_id = 0
@@ -17,8 +20,6 @@ class Camera():
         self.unassociated_obs = []
 
     def local_data_association(self, Zs):
-        for tracker in self.trackers + self.new_trackers:
-            tracker.cycle()
         geometry_scores = dict()
         for tracker in self.trackers + self.new_trackers:
             geometry_scores[tracker.id] = np.zeros((len(Zs)))
@@ -29,7 +30,7 @@ class Camera():
                 d = np.sqrt((z_xy - Hx_xy).T @ np.linalg.inv(tracker.V) @ (z_xy - Hx_xy)).item(0)
                 
                 # Geometry similarity value
-                s_d = 1/self.alpha*d if d < self.Tau else 1
+                s_d = 1/self.alpha*d if d < self.Tau_LDA else 1
                 geometry_scores[tracker.id][j] = s_d
 
         # TODO:
@@ -99,7 +100,7 @@ class Camera():
                 d = np.sqrt((xi_xy - xj_xy).T @ (xi_xy - xj_xy)).item(0)
                 
                 # Geometry similarity value
-                s_d = 1/self.alpha*d if d < self.Tau else 1
+                s_d = 1/self.alpha*d if d < self.Tau_GDA else 1
                 geometry_scores[i,j] = s_d
             for j in range(len(tracked_states)):
                 j_gs = j+len(self.unassociated_obs) # j for indexing into geometry_scores
@@ -111,7 +112,7 @@ class Camera():
                 d = np.sqrt((xi_xy - xj_xy).T @ (xi_xy - xj_xy)).item(0)
                 
                 # Geometry similarity value
-                s_d = 1/self.alpha*d if d < self.Tau else 1
+                s_d = 1/self.alpha*d if d < self.Tau_GDA else 1
                 geometry_scores[i,j_gs] = s_d
 
         # TODO:
@@ -123,8 +124,13 @@ class Camera():
         unassociated_obs = self.unassociated_obs
         len_unassociated_obs = self.add_observations(unassociated_obs)
         assert len_unassociated_obs == 0
-
-
+        
+        # Handle deletions
+        for tracker in self.trackers + self.new_trackers:
+            tracker.cycle()
+            if tracker.ell > self.kappa:
+                self.trackers.remove(tracker)
+                
     def get_observations(self):
         observations = []
         for tracker in self.trackers:

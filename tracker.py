@@ -8,7 +8,7 @@ class Tracker():
         self.A = np.eye(6); self.A[0,4] = 1/Ts; self.A[1,5] = 1/Ts
         self.H = np.eye(4,6)
         self.Q = np.eye(6)
-        self.R = np.eye(4)
+        self.R = np.eye(4)*3
         self.P = np.eye(6)
         self.V = self.P[0:2,0:2] + self.R[0:2,0:2] # Pxy + Rxy
 
@@ -17,10 +17,12 @@ class Tracker():
         self._state = np.concatenate((self.measurement, np.zeros((2,1))), 0)
         # self.initialized = False
         self.frames_seen = 1
-        self.frames_since_being_seen = 0
+        self._ell = 0
         self._seen = True
         self.Ts = Ts
         self.color = (np.random.randint(0,255), np.random.randint(0,255), np.random.randint(0,255))
+        self.to_str = f'{self._id}, state: {np.array2string(self._state.T,precision=2)},' + \
+            f' measurement: {np.array2string(self._measurement.T,precision=2)}'
 
         self.predict()
 
@@ -39,10 +41,15 @@ class Tracker():
     @property
     def measurement(self):
         return self._measurement
+    
+    @property
+    def ell(self):
+        return self._ell
 
     def update(self, measurement):
         self.frames_seen += 1
         self._seen = True
+        self._ell = 0
         self._measurement = measurement
 
     def predict(self):
@@ -58,6 +65,8 @@ class Tracker():
         self.xbar[observation_msg.tracker_id[0]] = observation_msg.xbar
         self.u[observation_msg.tracker_id[0]] = observation_msg.u
         self.U[observation_msg.tracker_id[0]] = observation_msg.U
+        if observation_msg.ell < self._ell:
+            self._ell = observation_msg.ell
     
     def observation_msg(self):
         if self._seen:
@@ -71,7 +80,7 @@ class Tracker():
             xbar=self.xbar[self._id[0]],
             u=u,
             U=U,
-            ell=0
+            ell=self._ell
         )
 
     def correction(self):
@@ -96,14 +105,18 @@ class Tracker():
         self._state = xhat
         self.P = self.A @ M @ self.A.T + self.Q
         self.V = self.P[0:2,0:2] + self.R[0:2,0:2]
+        # print(f'P: {self.P[0:2,0:2].reshape(-1)}')
+        # print(f'R: {self.R[0:2,0:2].reshape(-1)}')
 
     def cycle(self):
-        self._seen = False
-
-    def __str__(self):
         if self._seen:
-            return f'{self._id}, state: {np.array2string(self._state.T,precision=2)},' + \
+            self.to_str = f'{self._id}, state: {np.array2string(self._state.T,precision=2)},' + \
                 f' measurement: {np.array2string(self._measurement.T,precision=2)}'
         else:
-            return f'{self._id}, state: {np.array2string(self._state.T,precision=2)},' + \
+            self.to_str = f'{self._id}, state: {np.array2string(self._state.T,precision=2)},' + \
                 f' not seen.'
+        self._seen = False
+        self._ell += 1
+
+    def __str__(self):
+        return self.to_str
