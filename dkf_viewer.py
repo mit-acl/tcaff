@@ -4,6 +4,7 @@ import pathlib
 import numpy as np
 import cv2 as cv
 import matplotlib.pyplot as plt
+# from copy import deepcopy
 
 from person_detector import PersonDetector
 from camera import Camera
@@ -122,7 +123,8 @@ if __name__ == '__main__':
 
     SKIP_FRAMES = 1
     FIRST_FRAME = 60
-    # FIRST_FRAME = 400
+    # FIRST_FRAME = 300
+    # FIRST_FRAME = 450
     COLORS = [(255,0,0), (0,255,0), (0,0,255), (255, 255, 255)]
 
     framenum = -1
@@ -175,14 +177,15 @@ if __name__ == '__main__':
                     else:
                         pt = int(x), int(y)
 
-                    cv.drawMarker(frame, pt, getTrackColor(int(id)), getMarkerType(i))
+                    cv.drawMarker(frame, pt, getTrackColor(int(id)), getMarkerType(i), thickness=2)
                     # cv.rectangle(frame, (int(x0), int(y0)), (int(x1), int(y1)), (255,0,0), 4)
 
             if framenum % SKIP_FRAMES == 0:
                 Zs = []
-                boxes = detector.get_person_boxes(frame)
-                for box in boxes:
-                    x0, y0, x1, y1 = box.tolist()
+                Z_imgs = []
+                boxes, box_imgs = detector.get_person_boxes(frame)
+                for box, box_img in zip(boxes, box_imgs):
+                    x0, y0, x1, y1 = box
                     center_x, x, y = x0 + (x1 - x0) / 2, x0, y1
                     center_pt = projectToGroundPlane(center_x, y, H)
                     edge_pt = projectToGroundPlane(x, y, H)
@@ -191,9 +194,10 @@ if __name__ == '__main__':
                     ratio_camera2real = width/(x1-x0)
                     height = abs(ratio_camera2real * (y1-y0))
                     Zs.append(np.array([[center_pt[0], center_pt[1], width, height]]).T)
+                    Z_imgs.append(box_img)
                     cv.rectangle(frame, (int(x0),int(y0)), (int(x1),int(y1)), (255,0,0), 2)
 
-                a.local_data_association(Zs)
+                a.local_data_association(Zs, Z_imgs)
                 observations += a.get_observations()  
 
                 cv.imshow(f"frame{i}", frame)
@@ -210,10 +214,11 @@ if __name__ == '__main__':
 
         if framenum == 0:
             α = 1. / len(firstframes)
-
             topview = np.zeros_like(firstframes[0], dtype=np.float64)
+            topview = np.concatenate([topview, topview], 0)
+            topview = np.concatenate([topview, topview], 1)
             for img, H in zip(firstframes, Hs):
-                topview += α * cv.warpPerspective(img, H, img.shape[1::-1])
+                topview += α * cv.warpPerspective(img, H, topview.shape[1::-1])
             topview = topview.astype(np.uint8)
 
             # cv.imshow('topview', topview)
@@ -234,7 +239,7 @@ if __name__ == '__main__':
                         pt = projectToGroundPlane(x, y, H)
                         pt = (int(pt[0]), int(pt[1]))
 
-                        cv.drawMarker(combined, pt, getTrackColor(int(id)), getMarkerType(i))
+                        cv.drawMarker(combined, pt, getTrackColor(int(id)), getMarkerType(i), thickness=2)
 
 
                 Xs, colors = a.get_trackers()   
