@@ -1,6 +1,7 @@
 import numpy as np
 from numpy.linalg import norm as norm
-from copy import copy
+from scipy.optimize import linear_sum_assignment
+
 from tracker import Tracker
 
 class Camera():
@@ -22,11 +23,11 @@ class Camera():
         self.unassociated_obs = []
 
     def local_data_association(self, Zs, feature_vecs):
-        geometry_scores = dict()
-        appearance_scores = dict()
-        for tracker in self.trackers + self.new_trackers:
-            geometry_scores[tracker.id] = np.zeros((len(Zs)))
-            appearance_scores[tracker.id] = np.zeros((len(Zs)))
+        all_trackers = self.trackers + self.new_trackers
+        geometry_scores = np.zeros((len(all_trackers), len(Zs)))
+        appearance_scores = np.zeros((len(all_trackers), len(Zs)))
+        large_num = 1000
+        for i, tracker in enumerate(all_trackers):
             Hx_xy = (tracker.H @ tracker.state)[0:2,:]
             for j, (Z, aj) in enumerate(zip(Zs, feature_vecs)):
                 z_xy = Z[0:2,:]
@@ -34,8 +35,8 @@ class Camera():
                 d = np.sqrt((z_xy - Hx_xy).T @ np.linalg.inv(tracker.V) @ (z_xy - Hx_xy)).item(0)
                 
                 # Geometry similarity value
-                s_d = 1/self.alpha*d if d < self.Tau_LDA else 1
-                geometry_scores[tracker.id][j] = s_d
+                s_d = 1/self.alpha*d if d < self.Tau_LDA else large_num
+                geometry_scores[i,j] = s_d
                 
                 # Feature similarity value (if geometry is consistent)
                 if s_d < 1:
@@ -45,39 +46,39 @@ class Camera():
                         s_a = min(s_a, s_a_new)
                 else:
                     s_a = 1
-                appearance_scores[tracker.id][j] = s_a
+                appearance_scores[i,j] = s_a
 
-        tracker_pairs = dict()
-        Zs_associated = []
-        Z_best_set = set()
-        product_scores = dict()
-        
-        for tracker_id in geometry_scores:
-            product_scores[tracker_id] = geometry_scores[tracker_id] * appearance_scores[tracker_id] # element by element multiplication
-        for Z in Zs:
-            Zs_associated.append(False)
-        if Zs:
-            for i, tracker in enumerate(self.trackers + self.new_trackers):
-                Z_best_idx = np.argmin(product_scores[tracker.id])
-                is_current_tracker = i < len(self.trackers)
-                # TODO
-                # I don't think this is the right fix... Shouldn't be needed when we are using appearance information
-                if is_current_tracker:
-                    Z_best_set.add(Z_best_idx)
-                elif Z_best_idx in Z_best_set: # prune new trackers that have measurements associated with a current tracker
-                    self.new_trackers.remove(tracker)
-                    continue
-                Z_best = Zs[Z_best_idx]
-                if product_scores[tracker.id][Z_best_idx] < 1: # TODO: should I really compare to Tau here
-                    if is_current_tracker and tracker.seen_by_this_camera:
-                        tracker.update(Z_best)
-                    elif is_current_tracker and not tracker.seen_by_this_camera:
-                        tracker.update(Z_best, feature_vecs[Z_best_idx])
-                        tracker.seen_by_this_camera = True
-                        tracker.include_appearance_in_obs()
-                    else:
-                        tracker.update(Z_best, feature_vecs[Z_best_idx])
-                    Zs_associated[Z_best_idx] = True
+        unassociated = []
+        product_scores = geometry_scores * appearance_scores # element-wise multiplication
+        # augment cost to add option for no associations
+        hungarian_cost = np.concatenate([
+            np.concatenate([product_scores, np.ones(product_scores.shape)], axis=1),
+            np.ones((product_scores.shape[0], 2*product_scores.shape[1]))], axis=0)
+        row_ind, col_ind = linear_sum_assignment(hungarian_cost)
+        for t_idx, z_idx in zip(row_ind, col_ind):
+            # tracker and measurement associated together
+            if t_idx < len(all_trackers) and z_idx < len(Zs):
+                assert product_scores[t_idx,z_idx] < 1
+                is_current_tracker = t_idx < len(self.trackers)
+                if is_current_tracker and all_trackers[t_idx].seen_by_this_camera:
+                    all_trackers[t_idx].update(Zs[z_idx])
+                elif is_current_tracker and not all_trackers[t_idx].seen_by_this_camera:
+                    all_trackers[t_idx].update(Zs[z_idx], feature_vecs[z_idx])
+                    all_trackers[t_idx].seen_by_this_camera = True
+                    all_trackers[t_idx].include_appearance_in_obs()
+                else:
+                    all_trackers[t_idx].update(Zs[z_idx], feature_vecs[z_idx])            
+            # unassociated measurement
+            elif z_idx < len(Zs):
+                unassociated.append(z_idx)
+            # unassociated tracker or augmented part of matrix
+            else:
+                continue
+            
+        # if there are no trackers, hungarian matrix will be empty, handle separately
+        if len(all_trackers) == 0:
+            for z_idx in range(len(Zs)):
+                unassociated.append(z_idx)
 
         for tracker in self.new_trackers:
             if tracker.frames_seen >= self.n_meas_to_init_tracker:
@@ -88,13 +89,12 @@ class Camera():
             elif not tracker.seen:
                 self.new_trackers.remove(tracker)
 
-        for j, (Z, aj) in enumerate(zip(Zs, feature_vecs)):
-            if not Zs_associated[j]:
-                new_tracker = Tracker(self.camera_id, self.next_available_id, Z, aj)
-                new_tracker.update(Z)
-                new_tracker.seen_by_this_camera = True
-                self.new_trackers.append(new_tracker)
-                self.next_available_id += 1
+        for z_idx in unassociated:
+            new_tracker = Tracker(self.camera_id, self.next_available_id, Zs[z_idx], feature_vecs[z_idx])
+            new_tracker.update(Zs[z_idx])
+            new_tracker.seen_by_this_camera = True
+            self.new_trackers.append(new_tracker)
+            self.next_available_id += 1
 
         for tracker in self.trackers + self.new_trackers:
             tracker.predict()
