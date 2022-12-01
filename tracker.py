@@ -85,13 +85,14 @@ class Tracker():
     def observation_update(self, observation_msg):
         for mid in observation_msg.mapped_ids:
             self.mapped_ids.add(mid) 
+        # TODO: don't think I'm handling this right
         if not observation_msg.has_measurement_info:
             return
         self.xbar[observation_msg.tracker_id[0]] = observation_msg.xbar
         self._ell = min(self._ell, observation_msg.ell)
         # if observation_msg.has_measurement_info:
-        #     self.u[observation_msg.tracker_id[0]] = observation_msg.u
-        #     self.U[observation_msg.tracker_id[0]] = observation_msg.U
+        self.u[observation_msg.tracker_id[0]] = observation_msg.u
+        self.U[observation_msg.tracker_id[0]] = observation_msg.U
         if observation_msg.has_appearance_info:
             for a in observation_msg.a:
                 self._a.append(a)
