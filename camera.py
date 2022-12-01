@@ -91,6 +91,7 @@ class Camera():
         for j, (Z, aj) in enumerate(zip(Zs, feature_vecs)):
             if not Zs_associated[j]:
                 new_tracker = Tracker(self.camera_id, self.next_available_id, Z, aj)
+                new_tracker.update(Z)
                 new_tracker.seen_by_this_camera = True
                 self.new_trackers.append(new_tracker)
                 self.next_available_id += 1
@@ -174,8 +175,7 @@ class Camera():
     def get_observations(self):
         observations = []
         for tracker in self.trackers:
-            if tracker.seen:
-                observations.append(tracker.observation_msg())
+            observations.append(tracker.observation_msg())
         return observations
 
     def add_observations(self, observations):
@@ -186,10 +186,22 @@ class Camera():
                 for tracker in self.trackers:
                     if tracker.id == target_tracker_id:
                         tracker.observation_update(obs)
-                        break                
+                        break
             else:
-                assert obs.has_appearance_info, f'From camera: {self.camera_id}, No appearance info: {obs}'
-                self.unassociated_obs.append(obs)
+                matched = False
+                for mid in obs.mapped_ids:
+                    if mid in self.tracker_mapping:
+                        matched = True
+                        target_tracker_id = self.tracker_mapping[mid]
+                        self.tracker_mapping[obs.tracker_id] = target_tracker_id
+                        for tracker in self.trackers:
+                            if tracker.id == target_tracker_id:
+                                tracker.observation_update(obs)
+                                break
+                        break
+                if not matched:                        
+                    assert obs.has_appearance_info, f'From camera: {self.camera_id}, No appearance info: {obs}'
+                    self.unassociated_obs.append(obs)
         return len(self.unassociated_obs)
             
     def get_trackers(self):

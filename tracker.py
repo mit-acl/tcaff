@@ -4,7 +4,7 @@ from observation_msg import ObservationMsg
 from copy import deepcopy
 class Tracker():
 
-    def __init__(self, camera_id, tracker_id, measurement, feature_vec, Ts=1):
+    def __init__(self, camera_id, tracker_id, estimated_state, feature_vec, Ts=1):
         self.A = np.eye(6); self.A[0,4] = 1/Ts; self.A[1,5] = 1/Ts
         self.H = np.eye(4,6)
         # self.Q = np.eye(6)
@@ -25,19 +25,19 @@ class Tracker():
         self.V = self.P[0:2,0:2] + self.R[0:2,0:2] # Pxy + Rxy
 
         self._id = (camera_id, tracker_id)
-        self._measurement = measurement
-        self._state = np.concatenate((self.measurement, np.zeros((2,1))), 0)
+        self.mapped_ids = set([self._id])
+        self._measurement = None
+        self._state = np.concatenate((estimated_state, np.zeros((2,1))), 0)
         self._a = [feature_vec] if not isinstance(feature_vec, list) else feature_vec
         self.include_appearance = False
 
         self.frames_seen = 1
         self._ell = 0
-        self._seen = True
+        self._seen = False
         self.seen_by_this_camera = False
         self.Ts = Ts
         self.color = (np.random.randint(0,255), np.random.randint(0,255), np.random.randint(0,255))
-        self.to_str = f'{self._id}, state: {np.array2string(self._state.T,precision=2)},' + \
-            f' measurement: {np.array2string(self._measurement.T,precision=2)}'
+        self.to_str = ''
 
         self.predict()
 
@@ -83,11 +83,15 @@ class Tracker():
             self.U[self._id[0]] = self.H.T @ inv(self.R) @ self.H
 
     def observation_update(self, observation_msg):
+        for mid in observation_msg.mapped_ids:
+            self.mapped_ids.add(mid) 
+        if not observation_msg.has_measurement_info:
+            return
         self.xbar[observation_msg.tracker_id[0]] = observation_msg.xbar
-        self.u[observation_msg.tracker_id[0]] = observation_msg.u
-        self.U[observation_msg.tracker_id[0]] = observation_msg.U
-        if observation_msg.ell < self._ell:
-            self._ell = observation_msg.ell
+        self._ell = min(self._ell, observation_msg.ell)
+        # if observation_msg.has_measurement_info:
+        #     self.u[observation_msg.tracker_id[0]] = observation_msg.u
+        #     self.U[observation_msg.tracker_id[0]] = observation_msg.U
         if observation_msg.has_appearance_info:
             for a in observation_msg.a:
                 self._a.append(a)
@@ -100,30 +104,23 @@ class Tracker():
             self._a.append(ai)
     
     def observation_msg(self):
+        '''
+        Generates observation_msg containing tracker prediction and observation info.
+        '''
+        obs_msg = ObservationMsg(
+                tracker_id=deepcopy(self._id), 
+                mapped_ids=deepcopy(self.mapped_ids),
+                xbar=np.copy(self.xbar[self._id[0]]),
+                ell=deepcopy(self._ell),
+            )
         if self._seen:
-            u = self.u[self._id[0]]
-            U = self.U[self._id[0]]
-        else:
-            u = None
-            U = None
+            u = np.copy(self.u[self._id[0]])
+            U = np.copy(self.U[self._id[0]])
+            obs_msg.add_measurement(u, U)
         if self.include_appearance:
             self.include_appearance = False
-            return ObservationMsg(
-                tracker_id = deepcopy(self._id), 
-                xbar=np.copy(self.xbar[self._id[0]]),
-                u=np.copy(u),
-                U=np.copy(U),
-                ell=deepcopy(self._ell),
-                a=deepcopy(self._a)
-            )
-        else:
-            return ObservationMsg(
-                tracker_id = deepcopy(self._id), 
-                xbar=np.copy(self.xbar[self._id[0]]),
-                u=np.copy(u),
-                U=np.copy(U),
-                ell=deepcopy(self._ell),
-            )
+            obs_msg.add_appearance(deepcopy(self._a))
+        return obs_msg
 
     def correction(self):
         if len(self.u) == 0:
