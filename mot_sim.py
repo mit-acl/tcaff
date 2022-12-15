@@ -4,10 +4,10 @@ import pathlib
 import numpy as np
 import cv2 as cv
 import matplotlib.pyplot as plt
-# from copy import deepcopy
 
 from person_detector import PersonDetector
 from camera import Camera
+from metric_evaluator import MetricEvaluator
 
 
 def getHomographies():
@@ -104,6 +104,14 @@ if __name__ == '__main__':
             type=str,
             default=None,
             help='Print debug logging')
+    parser.add_argument('--std_dev_rotation',
+            type=float,
+            default=0,
+            help='Camera rotation error standard deviation')
+    parser.add_argument('--std_dev_translation',
+            type=float,
+            default=0,
+            help='Camera translation error standard deviation')
     args = parser.parse_args()
 
 
@@ -117,9 +125,11 @@ if __name__ == '__main__':
     GTs = getAnnotations(root)
     Hs = getHomographies()
     agents = []
+    mes = []
     for i in range(numCams):
         agents.append(Camera(i))
-    detector = PersonDetector()
+        mes.append(MetricEvaluator())
+    detector = PersonDetector(sigma_r=args.std_dev_rotation*np.pi/180, sigma_t=args.std_dev_translation)
 
     SKIP_FRAMES = 1
     FIRST_FRAME = 60
@@ -182,22 +192,13 @@ if __name__ == '__main__':
 
             if framenum % SKIP_FRAMES == 0:
                 Zs = []
-                Z_imgs = []
-                boxes, box_imgs = detector.get_person_boxes(frame)
-                for box, box_img in zip(boxes, box_imgs):
+                positions, boxes, feature_vecs = detector.get_person_boxes(frame, i, framenum)
+                for pos, box in zip(positions, boxes):
                     x0, y0, x1, y1 = box
-                    center_x, x, y = x0 + (x1 - x0) / 2, x0, y1
-                    center_pt = projectToGroundPlane(center_x, y, H)
-                    edge_pt = projectToGroundPlane(x, y, H)
-                    width = 2*np.linalg.norm(np.array(center_pt)-np.array(edge_pt)) # probably something I could do better to find the true distance better
-                    # TODO: Figure out how to get actual height
-                    ratio_camera2real = width/(x1-x0)
-                    height = abs(ratio_camera2real * (y1-y0))
-                    Zs.append(np.array([[center_pt[0], center_pt[1], width, height]]).T)
-                    Z_imgs.append(box_img)
+                    Zs.append(np.array([[pos[0], pos[1], 20, 50]]).T)
                     cv.rectangle(frame, (int(x0),int(y0)), (int(x1),int(y1)), (255,0,0), 2)
 
-                a.local_data_association(Zs, Z_imgs)
+                a.local_data_association(Zs, feature_vecs)
                 observations += a.get_observations()  
 
                 cv.imshow(f"frame{i}", frame)
@@ -226,35 +227,50 @@ if __name__ == '__main__':
         else:
             combined = topview.copy()
 
+            gt_pts = dict()
             for i, (GT, a, H) in enumerate(zip(GTs, agents, Hs)):
 
                 # get ground truth annotations of this frame
                 gt = GT[GT[:,5]==framenum,:]
 
                 for row in gt:
-                    id, x0, y0, x1, y1, _, lost, occluded, generated = row
+                    gt_id, x0, y0, x1, y1, _, lost, occluded, generated = row
 
                     if not lost and not occluded:
                         x, y = x0 + (x1 - x0) / 2, y1
                         pt = projectToGroundPlane(x, y, H)
-                        pt = (int(pt[0]), int(pt[1]))
-
-                        cv.drawMarker(combined, pt, getTrackColor(int(id)), getMarkerType(i), thickness=2)
-
+                        if gt_id not in gt_pts:
+                            gt_pts[gt_id] = []
+                        gt_pts[gt_id].append(np.array(pt))
 
                 Xs, colors = a.get_trackers()   
 
                 for X, color in zip(Xs, colors):
                     x, y, w, h, _, _ = X.reshape(-1).tolist()
                     cv.circle(combined, (int(x),int(y)), int(w/2), color, 4)
+            
+            gt_avgs = dict()   
+            for gt_id, pt_list in gt_pts.items():
+                gt_avg = sum(pt_list) / len(pt_list)
+                gt_avgs[gt_id] = gt_avg
+                pt = (int(gt_avg[0]), int(gt_avg[1]))
+                cv.drawMarker(combined, pt, getTrackColor(int(gt_id)), getMarkerType(i), thickness=2)
+                
+            for a, me in zip(agents, mes):
+                me.update(gt_avgs, a.get_trackers(format='dict'))
+                # if framenum % 1000 == 0:
+                #     me.display_results()
 
             if framenum % SKIP_FRAMES == 0:
                 cv.imshow('topview', combined)
 
-        if framenum % SKIP_FRAMES == 0:
-            cv.waitKey(50)
-        else:
-            cv.waitKey(15)
+        cv.waitKey(5)
+        if framenum > 4950:
+            break
 
     cap.release()
     cv.destroyAllWindows()
+    
+    print('FINAL RESULTS')
+    for me in mes:
+        me.display_results()

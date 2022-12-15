@@ -8,8 +8,8 @@ class Camera():
 
     def __init__(self, camera_id, Tau_LDA=.5, alpha=2000, kappa=4):
         # TODO: Tune for Tau
-        Tau_LDA = 30
-        Tau_GDA = 30
+        Tau_LDA = 50
+        Tau_GDA = 50
         self.Tau_LDA = Tau_LDA
         self.Tau_GDA = Tau_GDA
         self.alpha = alpha
@@ -204,15 +204,21 @@ class Camera():
                     self.unassociated_obs.append(obs)
         return len(self.unassociated_obs)
             
-    def get_trackers(self):
+    def get_trackers(self, format='state_color'):
         # TODO: change what we're returning here
-        Xs = []
-        colors = []
-        for tracker in self.trackers:
-            if tracker.id[0] == self.camera_id: # only return local trackers
+        if format == 'state_color':
+            Xs = []
+            colors = []
+            for tracker in self.trackers:
+                assert tracker.id[0] == self.camera_id
                 Xs.append(tracker.state)
                 colors.append(tracker.color)
-        return Xs, colors
+            return Xs, colors
+        elif format == 'dict':
+            tracker_dict = dict()
+            for tracker in self.trackers:
+                tracker_dict[tracker.id] = np.array(tracker.state[0:2,:].reshape(-1))
+            return tracker_dict
 
     def _get_tracker_groups(self, similarity_scores):
         # TODO: Maximum clique kind of thing going on here...
