@@ -130,6 +130,7 @@ if __name__ == '__main__':
         agents.append(Camera(i))
         mes.append(MetricEvaluator())
     detector = PersonDetector(sigma_r=args.std_dev_rotation*np.pi/180, sigma_t=args.std_dev_translation)
+    gui = False
 
     SKIP_FRAMES = 1
     FIRST_FRAME = 60
@@ -201,7 +202,8 @@ if __name__ == '__main__':
                 a.local_data_association(Zs, feature_vecs)
                 observations += a.get_observations()  
 
-                cv.imshow(f"frame{i}", frame)
+                if gui:
+                    cv.imshow(f"frame{i}", frame)
 
         if framenum % SKIP_FRAMES == 0:
             for a in agents:
@@ -261,7 +263,7 @@ if __name__ == '__main__':
                 # if framenum % 1000 == 0:
                 #     me.display_results()
 
-            if framenum % SKIP_FRAMES == 0:
+            if gui and framenum % SKIP_FRAMES == 0:
                 cv.imshow('topview', combined)
 
         cv.waitKey(5)

@@ -3,7 +3,7 @@ import motmetrics as mm
 
 class MetricEvaluator():
 
-    def __init__(self, max_d=2*37.5):
+    def __init__(self, max_d=37.5):
         self.max_d = max_d
         self.acc = mm.MOTAccumulator(auto_id=True)
     
