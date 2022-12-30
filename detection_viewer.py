@@ -4,20 +4,17 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import time
 
-from frame_info import get_epfl_frame_info
+from frame_info import get_epfl_frame_info, get_static_test_frame_info
 
 def animate(i, start_frame, cams, bounds):
     minx, maxx, miny, maxy = bounds
-    colors = ['green', 'red', 'blue', 'orange']
+    colors = ['green', 'red', 'blue', 'orange', 'magenta']
     ax.clear()
-    print('hey')
     for j, cam in enumerate(cams):
         x = []
         y = []
-        # print(len(cam.pos(i + start_frame)))
-        print(i + start_frame)
         for pose in cam.pos(i + start_frame):
-            # print(pose)
+            print(pose.T)
             x.append(pose[0])
             y.append(pose[1])
         ax.plot([cam.cam_pos()[0]], cam.cam_pos()[1], 'o', color=colors[j], linewidth=3)
@@ -28,14 +25,19 @@ def animate(i, start_frame, cams, bounds):
 start_frame = 40
 
 ########### Set up detections ############
-frame_infos = get_epfl_frame_info(sigma_r = 0*np.pi/180)
+frame_infos = get_static_test_frame_info(sigma_r = 0*np.pi/180)
+num_cams = len(frame_infos)
 
-minx, maxx = min(frame_infos[0].cam_pos()[0], frame_infos[1].cam_pos()[0], frame_infos[2].cam_pos()[0], frame_infos[3].cam_pos()[0]), max(frame_infos[0].cam_pos()[0], frame_infos[1].cam_pos()[0], frame_infos[2].cam_pos()[0], frame_infos[3].cam_pos()[0])
-miny, maxy = min(frame_infos[0].cam_pos()[1], frame_infos[1].cam_pos()[1], frame_infos[2].cam_pos()[1], frame_infos[3].cam_pos()[1]), max(frame_infos[0].cam_pos()[1], frame_infos[1].cam_pos()[1], frame_infos[2].cam_pos()[1], frame_infos[3].cam_pos()[1])
-minx_v = minx - (maxx-minx)*.1
-maxx_v = maxx + (maxx-minx)*.1
-miny_v = miny - (maxy-miny)*.1
-maxy_v = maxy + (maxy-miny)*.1
+mins = [np.inf, np.inf]
+maxs = [-np.inf, -np.inf]
+for xy_idx in [0, 1]:
+    for cam_idx in range(num_cams):
+        mins[xy_idx] = min(mins[xy_idx], frame_infos[cam_idx].cam_pos()[xy_idx])
+        maxs[xy_idx] = max(maxs[xy_idx], frame_infos[cam_idx].cam_pos()[xy_idx])
+minx_v = mins[0] - (maxs[0]-mins[0])*.1
+maxx_v = maxs[0] + (maxs[0]-mins[0])*.1
+miny_v = mins[1] - (maxs[1]-mins[1])*.1
+maxy_v = maxs[1] + (maxs[1]-mins[1])*.1
 
 
 animate_lambda = lambda i : animate(i, start_frame, frame_infos, [minx_v, maxx_v, miny_v, maxy_v])
@@ -45,30 +47,3 @@ fig, ax = plt.subplots()
 ani = FuncAnimation(fig, animate_lambda, frames=frame_infos[0].num_frames-start_frame, interval=10, repeat=False)
 
 plt.show()
-
-# xs = list()
-# ys = list()
-# dirs_x = list()
-# dirs_y = list()
-# for R, T in zip(Rs, frame_infos):
-#     x = (R.T @ T)[0,0]
-#     y = (R.T @ T)[1,0]
-#     xs.append(x)
-#     ys.append(y)
-#     dir = R.T @ np.array([[0,0,-1]]).T
-#     dirs_x.append([x, x+1000*dir[0,0]])
-#     dirs_y.append([y, y+1000*dir[1,0]])
-# plt.plot(xs,ys, 'x')
-# for dir_x, dir_y in zip(dirs_x, dirs_y):
-#     plt.plot(dir_x, dir_y)
-
-# maxs = []
-# mins = []
-# for i in range(3):
-#     maxs.append(-float('inf'))
-#     mins.append(float('inf'))
-# for pose_list in poses.poses:
-#     for pose in pose_list:
-#         for i, el in enumerate(pose):
-#             maxs[i] = max(maxs[i], el)
-#             mins[i] = min(mins[i], el)
