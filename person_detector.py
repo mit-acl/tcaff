@@ -1,6 +1,6 @@
 # import torchreid feature extractor
 from torchreid.utils import FeatureExtractor
-from frame_info import get_epfl_frame_info
+from detections import get_epfl_frame_info
 
 class PersonDetector():
 

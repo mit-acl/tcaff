@@ -4,21 +4,33 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import time
 
-from frame_info import get_epfl_frame_info, get_static_test_frame_info
+from detections import get_epfl_frame_info, get_static_test_frame_info, GroundTruth
+GT = GroundTruth('/home/masonbp/ford-project/data/static-20221216/run01_2022-12-16-15-40-22.bag', ['1', '2', '3'], 'RR01')
 
 def animate(i, start_frame, cams, bounds):
     minx, maxx, miny, maxy = bounds
     colors = ['green', 'red', 'blue', 'orange', 'magenta']
     ax.clear()
+
+    # plot camera detections
     for j, cam in enumerate(cams):
         x = []
         y = []
         for pose in cam.pos(i + start_frame):
-            print(pose.T)
             x.append(pose[0])
             y.append(pose[1])
         ax.plot([cam.cam_pos()[0]], cam.cam_pos()[1], 'o', color=colors[j], linewidth=3)
         ax.plot(x, y, 'x', color=colors[j], linewidth=3)
+
+    # plot ground truth
+    t = cams[0].time(i + start_frame)
+    x = []; y = []
+    for pos in GT.ped_positions(t):
+        x.append(pos[0])
+        y.append(pos[1])
+        print(pos.T)
+    ax.plot(x, y, '^', color='black', linewidth=3)
+
     ax.set_xlim([minx,maxx])
     ax.set_ylim([miny,maxy])
     

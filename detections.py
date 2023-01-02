@@ -4,7 +4,7 @@ from scipy.spatial.transform import Rotation as Rot
 from bagpy import bagreader
 import pandas as pd
 
-class FrameInfo():
+class Detections():
     
     def __init__(self, T_BC, frame_file, pose_topic, detection_topic, sigma_r=0, sigma_t=0): 
 
@@ -44,7 +44,7 @@ class FrameInfo():
                 self.T = T
             objects = objects.split('centertrack_id: ')
             if objects[0] == '[]':
-                self.data.append({'bbox2d': [], 'pos3d': []})
+                self.data.append({'time': time_indices[0], 'bbox2d': [], 'pos3d': []})
                 continue
             bbox2d = []
             pos3d = []
@@ -66,7 +66,7 @@ class FrameInfo():
                 else:
                     pos3d_new = R @ pos3d_new + T
                 pos3d.append(pos3d_new)
-            self.data.append({'bbox2d': bbox2d, 'pos3d': pos3d})
+            self.data.append({'time': time_indices[0], 'bbox2d': bbox2d, 'pos3d': pos3d})
     
     def cam_pos(self):
         return self.T
@@ -80,12 +80,69 @@ class FrameInfo():
     def bbox(self, idx):
         return self.data[idx]['bbox2d']
 
+    def time(self, idx):
+        return self.data[idx]['time']
+
     def _list_from_str(self, start_indicator, end_indicator, obj):
         list_of_str = obj.split(start_indicator)[1].split(end_indicator)[0].replace('[', '').replace(']', '').strip().split(', ')
         list_num = []
         for num_str in list_of_str:
             list_num.append(float(num_str))
         return list_num
+
+class GroundTruth():
+
+    def __init__(self, bagfile, ped_list, reference_cam):
+        self.positions = dict()
+        self.orientations = dict()
+        self.times = dict()
+        self.peds = dict()
+        self.time_tol = .1
+
+        # Extract data from bag files       
+        b = bagreader(bagfile)
+
+        for ped in ped_list + [reference_cam]:
+            # assert type(ped) == str
+            try:
+                if ped == reference_cam:
+                    topic = f'/{reference_cam}/world'
+                else:
+                    topic = f'/PED{ped}/world'
+                ped_csv = b.message_by_topic(topic)
+                ped_df = pd.read_csv(ped_csv, usecols=['Time', 
+                    'pose.position.x', 'pose.position.y', 'pose.position.z',
+                    'pose.orientation.x', 'pose.orientation.y', 'pose.orientation.z', 
+                    'pose.orientation.w'])
+                
+                self.positions[ped] = pd.DataFrame.to_numpy(ped_df.iloc[:, 1:4])
+                self.orientations[ped] = pd.DataFrame.to_numpy(ped_df.iloc[:, 4:8])
+                self.times[ped] = ped_df.iloc[:,0]
+                if ped != reference_cam:
+                    self.peds[ped] = True
+            except:
+                assert ped != reference_cam
+                self.peds[ped] = False
+                continue
+        self.reference_cam = reference_cam
+            
+    def ped_positions(self, idx):
+        positions = []
+        for ped in self.peds:
+            if not ped:
+                continue
+            time = self.times[self.reference_cam][idx]
+            time_indices = np.where(self.times[ped] >= time)[0]
+            # print(time)
+            # print(self.times[ped][0])
+            if len(time_indices) == 0:
+                continue
+            if abs(self.times[ped][time_indices[0]] - time) > self.time_tol:
+                continue
+            print(self.times[ped][time_indices[0]])
+            print(time)
+            positions.append(self.positions[ped][time_indices[0]])
+        return positions
 
 def get_epfl_frame_info(sigma_r=0, sigma_t=0):
     
@@ -116,7 +173,7 @@ def get_epfl_frame_info(sigma_r=0, sigma_t=0):
     fis = []
     for i in range(num_cams):
         # print(i)
-        fis.append(FrameInfo(Rs[i], Ts[i], f'detections/cam{i}.bag', f'/camera{i}/centertrack/annotations', sigma_r=sigma_r, sigma_t=sigma_t))
+        fis.append(Detections(Rs[i], Ts[i], f'detections/cam{i}.bag', f'/camera{i}/centertrack/annotations', sigma_r=sigma_r, sigma_t=sigma_t))
         
     return fis
 
@@ -138,7 +195,7 @@ def get_static_test_frame_info(run=1, sigma_r=0, sigma_t=0):
     
     fis = []
     for i, rover_num in zip(range(num_cams), rover_nums[:num_cams]):        
-        fis.append(FrameInfo(T_BCs[i],
+        fis.append(Detections(T_BCs[i],
             f'/home/masonbp/ford-project/data/static-20221216/centertrack_detections/run0{run}_RR{rover_num}.bag', 
             f'/RR{rover_num}/world',
             f'/RR{rover_num}/detections', 
