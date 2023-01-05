@@ -6,10 +6,9 @@ from tracker import Tracker
 
 class Camera():
 
-    def __init__(self, camera_id, Tau_LDA=.5, alpha=2000, kappa=4):
+    def __init__(self, camera_id, Tau_LDA=1, alpha=2000, kappa=4):
         # TODO: Tune for Tau
-        Tau_LDA = 50
-        Tau_GDA = 50
+        Tau_GDA = Tau_LDA
         self.Tau_LDA = Tau_LDA
         self.Tau_GDA = Tau_GDA
         self.alpha = alpha

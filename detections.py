@@ -7,13 +7,15 @@ import pandas as pd
 class Detections():
     
     def __init__(self, T_BC, frame_file, pose_topic, detection_topic, sigma_r=0, sigma_t=0): 
+        self.data = []
 
         # Extract data from bag files       
         b = bagreader(frame_file)
         annot_csv = b.message_by_topic(detection_topic)
-        annot_df = pd.read_csv(annot_csv)
+        annot_df = pd.read_csv(annot_csv, usecols= \
+            ['header.stamp.secs', 'header.stamp.nsecs', 'detections'])
         object_lists = annot_df.detections.values.tolist()
-        object_times = annot_df.Time.values.tolist()
+        self.times = pd.DataFrame.to_numpy(annot_df.iloc[:,0:1]) + pd.DataFrame.to_numpy(annot_df.iloc[:,1:2])*1e-9
         pose_csv = b.message_by_topic(pose_topic)
         pose_df = pd.read_csv(pose_csv, usecols=['Time', 'pose.position.x', 'pose.position.y', 'pose.position.z',
             'pose.orientation.x', 'pose.orientation.y', 'pose.orientation.z', 'pose.orientation.w'])
@@ -21,11 +23,10 @@ class Detections():
         orientations = pd.DataFrame.to_numpy(pose_df.iloc[:, 4:8])
         pose_times = pose_df.iloc[:,0]
         
-        self.data = []
         self.num_frames = len(object_lists)
         # Iterate across each frame
         for i, objects in enumerate(object_lists):
-            time_indices = np.where(pose_times >= object_times[i])[0]
+            time_indices = np.where(pose_times >= self.times.item(i))[0]
             if len(time_indices) == 0:
                 break
             curr_position = positions[time_indices[0],:]
@@ -44,7 +45,7 @@ class Detections():
                 self.T = T
             objects = objects.split('centertrack_id: ')
             if objects[0] == '[]':
-                self.data.append({'time': time_indices[0], 'bbox2d': [], 'pos3d': []})
+                self.data.append({'time': self.times.item(i), 'bbox2d': [], 'pos3d': []})
                 continue
             bbox2d = []
             pos3d = []
@@ -66,18 +67,21 @@ class Detections():
                 else:
                     pos3d_new = R @ pos3d_new + T
                 pos3d.append(pos3d_new)
-            self.data.append({'time': time_indices[0], 'bbox2d': bbox2d, 'pos3d': pos3d})
+            self.data.append({'time': self.times.item(i), 'bbox2d': bbox2d, 'pos3d': pos3d})
     
     def cam_pos(self):
         return self.T
             
-    def at(self, idx):
+    def at(self, time):
+        idx = np.where(self.times >= time)[0][0]
         return self.data[idx]
     
-    def pos(self, idx):
+    def pos(self, time):
+        idx = np.where(self.times >= time)[0][0]
         return self.data[idx]['pos3d']
     
-    def bbox(self, idx):
+    def bbox(self, time):
+        idx = np.where(self.times >= time)[0][0]
         return self.data[idx]['bbox2d']
 
     def time(self, idx):
@@ -97,7 +101,8 @@ class GroundTruth():
         self.orientations = dict()
         self.times = dict()
         self.peds = dict()
-        self.time_tol = .1
+        self.time_tol = .2
+        self.ped_list = ped_list
 
         # Extract data from bag files       
         b = bagreader(bagfile)
@@ -126,23 +131,20 @@ class GroundTruth():
                 continue
         self.reference_cam = reference_cam
             
-    def ped_positions(self, idx):
+    def ped_positions(self, time):
         positions = []
-        for ped in self.peds:
+        ped_list = []
+        for ped, ped_id in zip(self.peds, self.ped_list):
             if not ped:
                 continue
-            time = self.times[self.reference_cam][idx]
             time_indices = np.where(self.times[ped] >= time)[0]
-            # print(time)
-            # print(self.times[ped][0])
             if len(time_indices) == 0:
                 continue
             if abs(self.times[ped][time_indices[0]] - time) > self.time_tol:
                 continue
-            print(self.times[ped][time_indices[0]])
-            print(time)
             positions.append(self.positions[ped][time_indices[0]])
-        return positions
+            ped_list.append(ped_id)
+        return ped_list, positions
 
 def get_epfl_frame_info(sigma_r=0, sigma_t=0):
     
@@ -177,7 +179,7 @@ def get_epfl_frame_info(sigma_r=0, sigma_t=0):
         
     return fis
 
-def get_static_test_frame_info(run=1, sigma_r=0, sigma_t=0):
+def get_static_test_detections(run=1, sigma_r=0, sigma_t=0):
 
     ########## Setu p cameras ############
     # T_WC = T_WB @ self.T_BC
@@ -205,4 +207,4 @@ def get_static_test_frame_info(run=1, sigma_r=0, sigma_t=0):
 
 if __name__ == '__main__':
         
-    fis = get_static_test_frame_info()
+    detections = get_static_test_detections()

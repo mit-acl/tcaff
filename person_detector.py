@@ -1,6 +1,6 @@
 # import torchreid feature extractor
 from torchreid.utils import FeatureExtractor
-from detections import get_epfl_frame_info
+from detections import get_epfl_frame_info, get_static_test_detections
 
 class PersonDetector():
 
@@ -10,13 +10,17 @@ class PersonDetector():
             # model_path='a/b/c/model.pth.tar',
             device=device
         )
-        self.frames = get_epfl_frame_info(sigma_r=sigma_r, sigma_t=sigma_t)
+        # self.detections = get_epfl_frame_info(sigma_r=sigma_r, sigma_t=sigma_t)
+        self.detections = get_static_test_detections()
+        self.x_max = 1920
+        self.y_max = 1080
+        self.start_time = self.detections[0].time(0)
 
-    def get_person_boxes(self, im, cam_num, frame_num):
+    def get_person_boxes(self, im, cam_num, frame_time):
         positions = []
         boxes = []
         features = []
-        for b, p in zip(self.frames[cam_num].bbox(frame_num), self.frames[cam_num].pos(frame_num)):
+        for b, p in zip(self.detections[cam_num].bbox(frame_time), self.detections[cam_num].pos(frame_time)):
             positions.append(p.reshape(-1).tolist())
             boxes.append(b)
             features.append(self._get_box_features(b, im))
@@ -24,7 +28,7 @@ class PersonDetector():
     
     def _get_box_features(self, box, im):
         x0, y0, x1, y1 = box
-        x0, y0, x1, y1 = max(x0, 0), max(y0, 0), min(x1, 360), min(y1, 288)
+        x0, y0, x1, y1 = max(x0, 0), max(y0, 0), min(x1, self.x_max), min(y1, self.y_max)
         box_im = im[int(y0):int(y1), int(x0):int(x1)]
         feature_vec = self.extractor(box_im)
         return feature_vec.cpu().detach().numpy().reshape((-1,1)) # convert to numpy array

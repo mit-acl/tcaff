@@ -3,9 +3,21 @@ import motmetrics as mm
 
 class MetricEvaluator():
 
-    def __init__(self, max_d=37.5):
+    def __init__(self, max_d=.5):
         self.max_d = max_d
         self.acc = mm.MOTAccumulator(auto_id=True)
+        
+    @property
+    def mota(self):
+        mh = mm.metrics.create()
+        summary = mh.compute(self.acc, metrics=['mota'], name='acc')
+        return summary.mota.iloc[0]
+    
+    @property
+    def motp(self):
+        mh = mm.metrics.create()
+        summary = mh.compute(self.acc, metrics=['motp'], name='acc')
+        return summary.motp.iloc[0]
     
     def update(self, gt_dict, hyp_dict):
         gt_id_list, gt_pt_matrix = self._matrix_list_form(gt_dict)
@@ -23,8 +35,7 @@ class MetricEvaluator():
         mh = mm.metrics.create()
         summary = mh.compute(self.acc, metrics=['num_frames', 'mota', 'motp'], name='acc')
         print(summary)
-                
-        
+       
     def _matrix_list_form(self, in_dict):
         out_list = []
         out_matrix = np.array([[]])
