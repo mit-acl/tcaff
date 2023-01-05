@@ -58,6 +58,16 @@ if __name__ == '__main__':
             type=float,
             default=0,
             help='Camera translation error standard deviation')
+    parser.add_argument('--viewer',
+            action='store_true',
+            help='Shows camera views, network estimates, and ground truth')
+    parser.add_argument('--no-progress-bar',
+            action='store_true',
+            help='Disables progress bar')
+    parser.add_argument('--metric-frequency',
+            type=float,
+            default=0,
+            help='Frequency (hz) to show metric summary')
     args = parser.parse_args()
 
     root = pathlib.Path(args.root)
@@ -72,7 +82,6 @@ if __name__ == '__main__':
         agents.append(Camera(i))
         mes.append(MetricEvaluator())
     detector = PersonDetector(sigma_r=args.std_dev_rotation*np.pi/180, sigma_t=args.std_dev_translation)
-    gui = True
 
     SKIP_FRAMES = 1
     FIRST_FRAME = 300
@@ -82,7 +91,12 @@ if __name__ == '__main__':
     if args.debug: 
         with open(args.debug, 'w') as f:
             print('<<<debug log>>>\n', file=f)
-    for framenum in tqdm(range(FIRST_FRAME, LAST_FRAME)):
+            
+    if args.no_progress_bar:
+        frame_range = range(FIRST_FRAME, LAST_FRAME)
+    else:
+        frame_range = tqdm(range(FIRST_FRAME, LAST_FRAME))
+    for framenum in frame_range:
         if framenum % 3 != 0:
             for cap in caps:
                 cap.read()
@@ -119,7 +133,7 @@ if __name__ == '__main__':
                 a.local_data_association(Zs, feature_vecs)
                 observations += a.get_observations()  
 
-                if gui:
+                if args.viewer:
                     cv.imshow(f"frame{i}", frame)
 
         if framenum % SKIP_FRAMES == 0:
@@ -158,10 +172,10 @@ if __name__ == '__main__':
             if framenum > 250:    
                 for a, me in zip(agents, mes):
                     me.update(gt_dict, a.get_trackers(format='dict'))
-                    # if framenum % 10 == 0:
-                    #     me.display_results()
+                    if args.metric_frequency != 0 and framenum % int((1 / args.metric_frequency) * 30) == 0:
+                        me.display_results()
 
-            if gui and framenum % SKIP_FRAMES == 0:
+            if args.viewer and framenum % SKIP_FRAMES == 0:
                 cv.imshow('topview', combined)
 
         cv.waitKey(5)

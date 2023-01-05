@@ -8,10 +8,11 @@ class PersonDetector():
         self.extractor = FeatureExtractor(
             model_name='osnet_x1_0', # TODO: Is this a good enough re-id network?
             # model_path='a/b/c/model.pth.tar',
-            device=device
+            device=device,
+            verbose=False
         )
         # self.detections = get_epfl_frame_info(sigma_r=sigma_r, sigma_t=sigma_t)
-        self.detections = get_static_test_detections()
+        self.detections = get_static_test_detections(sigma_r=sigma_r, sigma_t=sigma_t)
         self.x_max = 1920
         self.y_max = 1080
         self.start_time = self.detections[0].time(0)

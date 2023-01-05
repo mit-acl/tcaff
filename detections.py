@@ -10,7 +10,7 @@ class Detections():
         self.data = []
 
         # Extract data from bag files       
-        b = bagreader(frame_file)
+        b = bagreader(frame_file, verbose=False)
         annot_csv = b.message_by_topic(detection_topic)
         annot_df = pd.read_csv(annot_csv, usecols= \
             ['header.stamp.secs', 'header.stamp.nsecs', 'detections'])
@@ -24,6 +24,16 @@ class Detections():
         pose_times = pose_df.iloc[:,0]
         
         self.num_frames = len(object_lists)
+        
+        self.R_offset = np.eye(3)
+        self.T_offset = np.zeros((3,1))
+        if sigma_r != 0:
+            # TODO: Adding subsequent rotations isn't really Gaussian, if small should be close enough?
+            # Maybe using rotvec?
+            self.R_offset = Rot.from_euler('xyz', [np.random.normal(0, sigma_r), np.random.normal(0, sigma_r), np.random.normal(0, sigma_r)]).as_matrix()
+        if sigma_t != 0:
+            self.T_offset = np.array([np.random.normal(0, sigma_t/np.sqrt(3)), np.random.normal(0, sigma_t/np.sqrt(3)), np.random.normal(0, sigma_t/np.sqrt(3))]).reshape((3,1))
+        
         # Iterate across each frame
         for i, objects in enumerate(object_lists):
             time_indices = np.where(pose_times >= self.times.item(i))[0]
@@ -58,14 +68,7 @@ class Detections():
                 pos3d_new.append(float(obj.split('y: ')[1].split('z: ')[0].strip()))
                 pos3d_new.append(float(obj.split('z: ')[1].split('orientation: ')[0].strip()))
                 pos3d_new = np.array(pos3d_new).reshape((3,1))
-                if sigma_r != 0 or sigma_t != 0:
-                    # TODO: Adding subsequent rotations isn't really Gaussian, if small should be close enough?
-                    # Maybe using rotvec?
-                    R_noise = Rot.from_euler('xyz', [np.random.normal(0, sigma_r), np.random.normal(0, sigma_r), np.random.normal(0, sigma_r)]).as_matrix()
-                    t_noise = np.array([np.random.normal(0, sigma_t), np.random.normal(0, sigma_t), np.random.normal(0, sigma_t)]).reshape((3,1))
-                    pos3d_new = R_noise @ R @ pos3d_new + T + t_noise
-                else:
-                    pos3d_new = R @ pos3d_new + T
+                pos3d_new = self.R_offset @ R @ pos3d_new + T + self.T_offset
                 pos3d.append(pos3d_new)
             self.data.append({'time': self.times.item(i), 'bbox2d': bbox2d, 'pos3d': pos3d})
     
@@ -105,7 +108,7 @@ class GroundTruth():
         self.ped_list = ped_list
 
         # Extract data from bag files       
-        b = bagreader(bagfile)
+        b = bagreader(bagfile, verbose=False)
 
         for ped in ped_list + [reference_cam]:
             # assert type(ped) == str
@@ -182,7 +185,6 @@ def get_epfl_frame_info(sigma_r=0, sigma_t=0):
 def get_static_test_detections(run=1, sigma_r=0, sigma_t=0):
 
     ########## Setu p cameras ############
-    # T_WC = T_WB @ self.T_BC
     num_cams = 5
     T_BC_01 = np.array([0.0, 0.01919744239968966, 0.9998157121216441, 0.077, -1.0, 0.0, 0.0, 0.28, 0.0, -0.9998157121216442, 0.019197442399689665, -0.06999999999999999, 0.0, 0.0, 0.0, 1.0]).reshape(4,4)
     T_BC_04 = np.array([0.022684654329523025, -0.02268573610666359, 0.9994852494335512, 0.077, -0.9997426373806936, -0.00025889700461809384, 0.022684619799232468, 0.03, -0.0002558535612070688, -0.9997426120505415, -0.02268577063525499, -0.09, 0.0, 0.0, 0.0, 1.0]).reshape(4,4)
