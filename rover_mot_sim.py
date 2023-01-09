@@ -68,20 +68,29 @@ if __name__ == '__main__':
             type=float,
             default=0,
             help='Frequency (hz) to show metric summary')
+    parser.add_argument('--num-cams',
+            type=int,
+            default=4,
+            help='Number of cameras to use in simulation')
+    parser.add_argument('--num-peds',
+            type=int,
+            default=3,
+            help='Number of pedestrians to track in simulation (used for ground truth only)')
     args = parser.parse_args()
 
     root = pathlib.Path(args.root)
     bagfile = str(root / args.bag_file)
-    GT = GroundTruth(bagfile, ['1', '2', '3'], 'RR01')
+    GT = GroundTruth(bagfile, [f'{i+1}' for i in range(args.num_peds)], 'RR01')
 
-    numCams = 4
-    caps = getVideos(root)
+    numCams = args.num_cams
+    caps = getVideos(root, numCams=numCams)
     agents = []
     mes = []
     for i in range(numCams):
         agents.append(Camera(i))
         mes.append(MetricEvaluator())
-    detector = PersonDetector(sigma_r=args.std_dev_rotation*np.pi/180, sigma_t=args.std_dev_translation)
+    detector = PersonDetector(sigma_r=args.std_dev_rotation*np.pi/180, sigma_t=args.std_dev_translation, num_cams=numCams)
+    inconsistencies = 0
 
     SKIP_FRAMES = 1
     FIRST_FRAME = 300
@@ -92,17 +101,19 @@ if __name__ == '__main__':
         with open(args.debug, 'w') as f:
             print('<<<debug log>>>\n', file=f)
             
+    last_frame_time = 0
     if args.no_progress_bar:
         frame_range = range(FIRST_FRAME, LAST_FRAME)
     else:
         frame_range = tqdm(range(FIRST_FRAME, LAST_FRAME))
     for framenum in frame_range:
-        if framenum % 3 != 0:
+        frame_time = framenum / 30 + detector.start_time
+        if not detector.times_different(frame_time, last_frame_time):
             for cap in caps:
                 cap.read()
             continue
+        last_frame_time = frame_time
         
-        frame_time = framenum / 30 + detector.start_time
         if args.debug:
             with open(args.debug, 'a') as f:
                 print('//////////////////////////////////////////////////', file=f)
@@ -141,6 +152,7 @@ if __name__ == '__main__':
                 a.add_observations(observations)
                 a.dkf()
                 a.tracker_manager()
+                inconsistencies += a.inconsistencies
                 if args.debug:
                     with open(args.debug, 'a') as f:
                         np.set_printoptions(precision=1)
@@ -174,6 +186,7 @@ if __name__ == '__main__':
                     me.update(gt_dict, a.get_trackers(format='dict'))
                     if args.metric_frequency != 0 and framenum % int((1 / args.metric_frequency) * 30) == 0:
                         me.display_results()
+                        print(f'inconsistencies: {inconsistencies}')
 
             if args.viewer and framenum % SKIP_FRAMES == 0:
                 cv.imshow('topview', combined)
@@ -193,3 +206,4 @@ if __name__ == '__main__':
     print('FINAL RESULTS')
     print(f'mota: {mota}')
     print(f'motp: {motp}')
+    print(f'inconsistencies: {inconsistencies}')

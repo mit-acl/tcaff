@@ -76,19 +76,19 @@ class Detections():
         return self.T
             
     def at(self, time):
-        idx = np.where(self.times >= time)[0][0]
-        return self.data[idx]
+        return self.data[self.idx(time)]
     
     def pos(self, time):
-        idx = np.where(self.times >= time)[0][0]
-        return self.data[idx]['pos3d']
+        return self.data[self.idx(time)]['pos3d']
     
     def bbox(self, time):
-        idx = np.where(self.times >= time)[0][0]
-        return self.data[idx]['bbox2d']
+        return self.data[self.idx(time)]['bbox2d']
 
     def time(self, idx):
         return self.data[idx]['time']
+    
+    def idx(self, time):
+        return np.where(self.times >= time)[0][0]
 
     def _list_from_str(self, start_indicator, end_indicator, obj):
         list_of_str = obj.split(start_indicator)[1].split(end_indicator)[0].replace('[', '').replace(']', '').strip().split(', ')
@@ -182,10 +182,9 @@ def get_epfl_frame_info(sigma_r=0, sigma_t=0):
         
     return fis
 
-def get_static_test_detections(run=1, sigma_r=0, sigma_t=0):
+def get_static_test_detections(run=1, sigma_r=0, sigma_t=0, num_cams=4):
 
     ########## Setu p cameras ############
-    num_cams = 5
     T_BC_01 = np.array([0.0, 0.01919744239968966, 0.9998157121216441, 0.077, -1.0, 0.0, 0.0, 0.28, 0.0, -0.9998157121216442, 0.019197442399689665, -0.06999999999999999, 0.0, 0.0, 0.0, 1.0]).reshape(4,4)
     T_BC_04 = np.array([0.022684654329523025, -0.02268573610666359, 0.9994852494335512, 0.077, -0.9997426373806936, -0.00025889700461809384, 0.022684619799232468, 0.03, -0.0002558535612070688, -0.9997426120505415, -0.02268577063525499, -0.09, 0.0, 0.0, 0.0, 1.0]).reshape(4,4)
     T_BC_05 = np.array([-0.0174226746835367, -0.05495036561082756, 0.9983370711969513, 0.07769690336094144, -0.9998476997771804, -5.4828602412673115e-05, -0.017452055583951746, 0.32999512637861894, 0.0010137342613491236, -0.998489085725558, -0.05494104139699781, -0.07004079327681155, 0.0, 0.0, 0.0, 1.0]).reshape(4,4)
@@ -198,7 +197,7 @@ def get_static_test_detections(run=1, sigma_r=0, sigma_t=0):
     # Ts = [R0.T @ T0, R1.T @ T1, R2.T @ T2, R3.T @ T3]
     
     fis = []
-    for i, rover_num in zip(range(num_cams), rover_nums[:num_cams]):        
+    for i, rover_num in zip(range(num_cams), rover_nums[:num_cams]):
         fis.append(Detections(T_BCs[i],
             f'/home/masonbp/ford-project/data/static-20221216/centertrack_detections/run0{run}_RR{rover_num}.bag', 
             f'/RR{rover_num}/world',

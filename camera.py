@@ -20,6 +20,7 @@ class Camera():
         self.camera_id = camera_id
         self.tracker_mapping = dict()
         self.unassociated_obs = []
+        self.inconsistencies = 0
 
     def local_data_association(self, Zs, feature_vecs):
         all_trackers = self.trackers + self.new_trackers
@@ -170,6 +171,7 @@ class Camera():
         assert len_unassociated_obs == 0
         
         self.manage_deletions()
+        return
                 
     def get_observations(self):
         observations = []
@@ -267,6 +269,7 @@ class Camera():
         return new_tracker_groups
     
     def _create_trackers(self, tracker_groups, tracked_states):
+        self.inconsistencies = 0
         for group in tracker_groups:
             local_tracker_id = None
             mean_xbar = np.zeros((6,1))
@@ -284,11 +287,17 @@ class Camera():
                         self.new_trackers.remove(t)
                     # assert local_tracker_id == None or local_tracker_id == tracked_states[index-len(self.unassociated_obs)].tracker_id, \
                     #      f'1: {local_tracker_id}, 2: {tracked_states[index-len(self.unassociated_obs)].tracker_id}'
+                    if local_tracker_id != None and local_tracker_id != tracked_states[index-len(self.unassociated_obs)].tracker_id:
+                        # print('yeah it happened')
+                        self.inconsistencies += 1
                     local_tracker_id = tracked_states[index-len(self.unassociated_obs)].tracker_id
                     continue
                 elif self.unassociated_obs[index].tracker_id[0] == self.camera_id:
                     # assert local_tracker_id == None or local_tracker_id == self.unassociated_obs[index].tracker_id, \
                     #     f'1: {local_tracker_id}, 2: {self.unassociated_obs[index].tracker_id}'
+                    if local_tracker_id != None and local_tracker_id != self.unassociated_obs[index].tracker_id:
+                        # print('yeah it happened')
+                        self.inconsistencies += 1
                     local_tracker_id = self.unassociated_obs[index].tracker_id
                 
                 # if this is an unassociated observation (not a currently tracked tracker)
@@ -313,6 +322,8 @@ class Camera():
                 if index >= len(self.unassociated_obs):
                     continue
                 self.tracker_mapping[self.unassociated_obs[index].tracker_id] = local_tracker_id
+        
+        return
 
     def manage_deletions(self):
         for tracker in self.trackers + self.new_trackers:

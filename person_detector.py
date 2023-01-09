@@ -4,7 +4,7 @@ from detections import get_epfl_frame_info, get_static_test_detections
 
 class PersonDetector():
 
-    def __init__(self, device='cuda', threshold=.99, sigma_r=0, sigma_t=0):
+    def __init__(self, device='cuda', threshold=.99, sigma_r=0, sigma_t=0, num_cams=4):
         self.extractor = FeatureExtractor(
             model_name='osnet_x1_0', # TODO: Is this a good enough re-id network?
             # model_path='a/b/c/model.pth.tar',
@@ -12,10 +12,11 @@ class PersonDetector():
             verbose=False
         )
         # self.detections = get_epfl_frame_info(sigma_r=sigma_r, sigma_t=sigma_t)
-        self.detections = get_static_test_detections(sigma_r=sigma_r, sigma_t=sigma_t)
+        self.detections = get_static_test_detections(run=1, sigma_r=sigma_r, sigma_t=sigma_t, num_cams=num_cams)
         self.x_max = 1920
         self.y_max = 1080
         self.start_time = self.detections[0].time(0)
+        self.num_cams = num_cams
 
     def get_person_boxes(self, im, cam_num, frame_time):
         positions = []
@@ -35,3 +36,8 @@ class PersonDetector():
         return feature_vec.cpu().detach().numpy().reshape((-1,1)) # convert to numpy array
         # TODO: Should use tensor here?
         
+    def times_different(self, t1, t2):
+        for detections in self.detections:
+            if detections.idx(t1) == detections.idx(t2):
+                return False
+        return True
