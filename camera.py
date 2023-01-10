@@ -21,6 +21,7 @@ class Camera():
         self.tracker_mapping = dict()
         self.unassociated_obs = []
         self.inconsistencies = 0
+        self.groups_by_id = []
 
     def local_data_association(self, Zs, feature_vecs):
         all_trackers = self.trackers + self.new_trackers
@@ -165,7 +166,7 @@ class Camera():
         product_scores = geometry_scores * appearance_scores # element-wise multiplication
         tracker_groups = self._get_tracker_groups(product_scores)
         
-        self._create_trackers(tracker_groups, tracked_states)
+        self.groups_by_id = self._create_trackers(tracker_groups, tracked_states)
         unassociated_obs = self.unassociated_obs
         len_unassociated_obs = self.add_observations(unassociated_obs)
         assert len_unassociated_obs == 0
@@ -256,21 +257,35 @@ class Camera():
                     added[0] = added[0].union(g)
                     new_tracker_groups.append(added[0])
         
-        # associate with local indexes
-        if similarity_scores.shape[0] != similarity_scores.shape[1]:
-            for group in new_tracker_groups:
-                for i in group:
-                    local_idx = np.argmin(similarity_scores[i,similarity_scores.shape[0]:similarity_scores.shape[1]])
-                    local_idx += similarity_scores.shape[0]
-                    if similarity_scores[i,local_idx] < 1:
-                        group.add(local_idx)
-                        break
+        # # associate with local indexes
+        STOP_INCONSISTENCIES = True
+        if STOP_INCONSISTENCIES:
+            if similarity_scores.shape[0] != similarity_scores.shape[1]:
+                for group in new_tracker_groups:
+                    for i in group:
+                        local_idx = np.argmin(similarity_scores[i,similarity_scores.shape[0]:similarity_scores.shape[1]])
+                        local_idx += similarity_scores.shape[0]
+                        if similarity_scores[i,local_idx] < 1:
+                            group.add(local_idx)
+                            break
+        else:
+            if similarity_scores.shape[0] != similarity_scores.shape[1]:
+                for group in new_tracker_groups:
+                    to_add = set()
+                    for i in group:
+                        local_idx = np.argmin(similarity_scores[i,similarity_scores.shape[0]:similarity_scores.shape[1]])
+                        local_idx += similarity_scores.shape[0]
+                        if similarity_scores[i,local_idx] < .1:
+                            to_add.add(local_idx)
+                            # break
+                    group = group.union(to_add)
         
         return new_tracker_groups
     
     def _create_trackers(self, tracker_groups, tracked_states):
-        self.inconsistencies = 0
+        groups_by_id = list()
         for group in tracker_groups:
+            group_by_id = list()
             local_tracker_id = None
             mean_xbar = np.zeros((6,1))
             group_size = 0
@@ -291,6 +306,7 @@ class Camera():
                         # print('yeah it happened')
                         self.inconsistencies += 1
                     local_tracker_id = tracked_states[index-len(self.unassociated_obs)].tracker_id
+                    group_by_id.append(tracked_states[index-len(self.unassociated_obs)].tracker_id)
                     continue
                 elif self.unassociated_obs[index].tracker_id[0] == self.camera_id:
                     # assert local_tracker_id == None or local_tracker_id == self.unassociated_obs[index].tracker_id, \
@@ -299,6 +315,7 @@ class Camera():
                         # print('yeah it happened')
                         self.inconsistencies += 1
                     local_tracker_id = self.unassociated_obs[index].tracker_id
+                group_by_id.append(self.unassociated_obs[index].tracker_id)
                 
                 # if this is an unassociated observation (not a currently tracked tracker)
                 if index < len(self.unassociated_obs):
@@ -312,6 +329,7 @@ class Camera():
                 # new_tracker.include_appearance_in_obs()
                 self.trackers.append(new_tracker)
                 self.next_available_id += 1
+                group_by_id.append(local_tracker_id)
             else:
                 for tracker in self.trackers:
                     if tracker.id == local_tracker_id:
@@ -322,8 +340,9 @@ class Camera():
                 if index >= len(self.unassociated_obs):
                     continue
                 self.tracker_mapping[self.unassociated_obs[index].tracker_id] = local_tracker_id
+            groups_by_id.append(group_by_id)
         
-        return
+        return groups_by_id
 
     def manage_deletions(self):
         for tracker in self.trackers + self.new_trackers:

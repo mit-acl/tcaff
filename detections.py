@@ -8,6 +8,7 @@ class Detections():
     
     def __init__(self, T_BC, frame_file, pose_topic, detection_topic, sigma_r=0, sigma_t=0): 
         self.data = []
+        self.time_diff_allowed = .2 # TODO: tunable parameter...?
 
         # Extract data from bag files       
         b = bagreader(frame_file, verbose=False)
@@ -76,13 +77,25 @@ class Detections():
         return self.T
             
     def at(self, time):
-        return self.data[self.idx(time)]
+        idx = self.idx(time)
+        if abs(self.times[idx] - time) < self.time_diff_allowed:
+            return self.data[idx]
+        else:
+            return dict()
     
     def pos(self, time):
-        return self.data[self.idx(time)]['pos3d']
+        idx = self.idx(time)
+        if abs(self.times[idx] - time) < self.time_diff_allowed:
+            return self.data[idx]['pos3d']
+        else:
+            return list()
     
     def bbox(self, time):
-        return self.data[self.idx(time)]['bbox2d']
+        idx = self.idx(time)
+        if abs(self.times[idx] - time) < self.time_diff_allowed:
+            return self.data[idx]['bbox2d']
+        else:
+            return list()
 
     def time(self, idx):
         return self.data[idx]['time']

@@ -5,13 +5,13 @@ import sys
 
 class MetricHandler:
 
-    def __init__(self):
-        self.mota = dict()
-        self.motp = dict()
-        self.inconsistencies = dict()
+    def __init__(self, metric_types):
+        self.data = dict()
+        for metric in metric_types:
+            self.data[metric] = dict()
         
     def add_trial(self, metric_type, identifier, val):
-        metric = self._get_metric_from_type(metric_type)
+        metric = self.data[metric_type]
         if identifier in metric:
             avg, num, all = metric[identifier]
             avg = (avg * num + val) / (num + 1)
@@ -22,7 +22,7 @@ class MetricHandler:
             metric[identifier] = (val, 1, [val])
             
     def get_metric_along_line(self, metric_type, line_lambda, identifier_x_idx, ret_type='avg'):
-        metric = self._get_metric_from_type(metric_type)
+        metric = self.data[metric_type]
         line_x = []
         line_y = []
         for identifier, (avg, _, all) in metric.items():
@@ -41,26 +41,13 @@ class MetricHandler:
         
     def __str__(self):
         ret = 'mota:\n'
-        for identifier, (avg, num, _) in self.mota.items():
-            ret += f'\t(sigma_t: {identifier[0]}, sigma_r: {identifier[1]}): {avg}\n'
-            ret += f'\t\tn: {num}\n'
-        ret += '\nmotp:\n'
-        for identifier, (avg, num, _) in self.motp.items():
+        for identifier, (avg, num, _) in self.data['mota'].items():
             ret += f'\t(sigma_t: {identifier[0]}, sigma_r: {identifier[1]}): {avg}\n'
             ret += f'\t\tn: {num}\n'
         return ret
-                            
-        
-    def _get_metric_from_type(self, metric_type):
-        if metric_type == 'mota':
-            return self.mota
-        elif metric_type == 'motp':
-            return self.motp
-        elif metric_type == 'inconsistencies':
-            return self.inconsistencies
     
-def parse_metric_file(metric_file, inconsistencies=False):
-    mh = MetricHandler()
+def parse_metric_file(metric_file, metric_types=['mota', 'motp', 'inconsistencies', 'fp', 'fn', 'switch']):
+    mh = MetricHandler(metric_types=metric_types)
     with open(metric_file, 'r') as f:
         trial = []
         for line in f.readlines():
@@ -71,23 +58,16 @@ def parse_metric_file(metric_file, inconsistencies=False):
                 sigma_t = line.split('&')[0].split('=')[1].strip()
                 sigma_r = line.split('&')[1].split('=')[1].strip()
                 trial.append((float(sigma_t), float(sigma_r)))
-            elif 'mota' in line:
-                assert len(trial) == 1
-                trial.append(float(line.split('mota:')[1].strip()))
-            elif 'motp' in line:
-                assert len(trial) == 2
-                trial.append(float(line.split('motp:')[1].strip()))
-                if not inconsistencies:
-                    mh.add_trial('mota', trial[0], trial[1])
-                    mh.add_trial('motp', trial[0], trial[2])
-                    trial = []
-            elif inconsistencies and 'inconsistencies' in line:
-                assert len(trial) == 3
-                trial.append(float(line.split('inconsistencies:')[1].strip()))
-                mh.add_trial('mota', trial[0], trial[1])
-                mh.add_trial('motp', trial[0], trial[2])
-                mh.add_trial('inconsistencies', trial[0], trial[3])
-                trial = []
+            else:
+                for i, metric in enumerate(metric_types):
+                    if metric in line:
+                        assert len(trial) == i + 1
+                        trial.append(float(line.split(f'{metric}:')[1].strip()))
+                        if i == len(metric_types) - 1: # if last metric type
+                            for j in range(1, len(trial)):
+                                mh.add_trial(metric_types[j-1], trial[0], trial[j])
+                            trial = []
+                        break
     return mh
 
 if __name__ == '__main__':

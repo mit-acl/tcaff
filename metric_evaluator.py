@@ -19,6 +19,29 @@ class MetricEvaluator():
         summary = mh.compute(self.acc, metrics=['motp'], name='acc')
         return summary.motp.iloc[0]
     
+    @property
+    def avg_fp_per_frame(self):
+        mh = mm.metrics.create()
+        summary = mh.compute(self.acc, metrics=['num_false_positives', 'num_frames'], name='acc')
+        return summary.num_false_positives.iloc[0] / summary.num_frames.iloc[1]
+    
+    @property
+    def avg_fn_per_frame(self):
+        mh = mm.metrics.create()
+        summary = mh.compute(self.acc, metrics=['num_misses', 'num_frames'], name='acc')
+        return summary.num_misses.iloc[0] / summary.num_frames.iloc[1]
+    
+    @property
+    def avg_switch_per_frame(self):
+        mh = mm.metrics.create()
+        summary = mh.compute(self.acc, metrics=['num_switches', 'num_frames'], name='acc')
+        return summary.num_switches.iloc[0] / summary.num_frames.iloc[1]
+    
+    def get_metric(self, metric_name):
+        mh = mm.metrics.create()
+        summary = mh.compute(self.acc, metrics=[metric_name], name='acc')
+        return summary[metric_name].iloc[0]
+    
     def update(self, gt_dict, hyp_dict):
         gt_id_list, gt_pt_matrix = self._matrix_list_form(gt_dict)
         hyp_id_list, hyp_pt_matrix = self._matrix_list_form(hyp_dict)

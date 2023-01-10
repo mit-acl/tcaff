@@ -11,19 +11,19 @@ from person_detector import PersonDetector
 from camera import Camera
 from metric_evaluator import MetricEvaluator
 from detections import GroundTruth
+from inconsistency_counter import InconsistencyCounter
 
 
-def getVideos(root, nums=['01', '04', '05', '06', '08'], numCams=4):
+def getVideos(root, run, nums=['01', '04', '05', '06', '08'], numCams=4):
     caps = []
     for i in range(numCams):
-        videopath = root /  f"run01_RR{nums[i]}.avi"
+        videopath = root /  f"run0{run}_RR{nums[i]}.avi"
         caps.append(cv.VideoCapture(videopath.as_posix()))
     return caps
 
 def getTrackColor(i):
     c = np.array(plt.get_cmap('tab10').colors[i])
     c = (c * 255).astype(int)
-    # import ipdb; ipdb.set_trace()
     return tuple(v.item() for v in c[::-1])
 
 def getMarkerType(cam):
@@ -35,6 +35,32 @@ def getMarkerType(cam):
         return cv.MARKER_SQUARE
     if cam == 3:
         return cv.MARKER_TRIANGLE_UP
+    
+def get_avg_metric(metric, mes, divide_by_frames=False):
+    num_cams=len(mes)
+    m_avg = 0
+    for me in mes:
+        if divide_by_frames:
+            m_val = me.get_metric(metric) / (me.get_metric('num_frames') * num_cams)
+        else:
+            m_val = me.get_metric(metric) / num_cams
+        m_avg += m_val
+    return m_avg
+
+def print_results(mes, inconsistencies):
+    mota = get_avg_metric('mota', mes)
+    motp = get_avg_metric('motp', mes)
+    fp = get_avg_metric('num_false_positives', mes, divide_by_frames=True)
+    fn = get_avg_metric('num_misses', mes, divide_by_frames=True)
+    switch = get_avg_metric('num_switches', mes, divide_by_frames=True)
+    
+    print(f'mota: {mota}')
+    print(f'motp: {motp}')
+    print(f'fp: {fp}')
+    print(f'fn: {fn}')
+    print(f'switch: {switch}')
+    print(f'inconsistencies: {inconsistencies}')
+    
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Annotate video sequence with ground truth')
@@ -42,10 +68,10 @@ if __name__ == '__main__':
             type=str,
             default='/home/masonbp/ford-project/data/static-20221216',
             help='Dataset root directory')
-    parser.add_argument('-b', '--bag-file',
-            type=str,
-            default='run01_2022-12-16-15-40-22.bag',
-            help='ROS Bag file')
+    parser.add_argument('--run',
+            type=int,
+            default=1,
+            help='Rover test run number')
     parser.add_argument('-d', '--debug',
             type=str,
             default=None,
@@ -72,30 +98,37 @@ if __name__ == '__main__':
             type=int,
             default=4,
             help='Number of cameras to use in simulation')
-    parser.add_argument('--num-peds',
-            type=int,
-            default=3,
-            help='Number of pedestrians to track in simulation (used for ground truth only)')
     args = parser.parse_args()
 
     root = pathlib.Path(args.root)
-    bagfile = str(root / args.bag_file)
-    GT = GroundTruth(bagfile, [f'{i+1}' for i in range(args.num_peds)], 'RR01')
+    if args.run == 1:
+        bagfile = 'run01_2022-12-16-15-40-22.bag'
+        num_peds = 3
+        FIRST_FRAME = 300
+        LAST_FRAME = 5690
+    elif args.run == 3:
+        bagfile = 'run03_2022-12-16-15-52-06.bag'
+        num_peds = 5
+        FIRST_FRAME = 5
+        LAST_FRAME = 7500
+    bagfile = str(root / bagfile)
+    GT = GroundTruth(bagfile, [f'{i+1}' for i in range(num_peds)], 'RR01')
 
     numCams = args.num_cams
-    caps = getVideos(root, numCams=numCams)
+    caps = getVideos(root, run=args.run, numCams=numCams)
     agents = []
     mes = []
     for i in range(numCams):
         agents.append(Camera(i))
         mes.append(MetricEvaluator())
-    detector = PersonDetector(sigma_r=args.std_dev_rotation*np.pi/180, sigma_t=args.std_dev_translation, num_cams=numCams)
+    detector = PersonDetector(run=args.run, sigma_r=args.std_dev_rotation*np.pi/180, sigma_t=args.std_dev_translation, num_cams=numCams)
     inconsistencies = 0
+    ic = InconsistencyCounter()
+    last_printed_metrics = 0
 
     SKIP_FRAMES = 1
-    FIRST_FRAME = 300
-    LAST_FRAME = 5690
     COLORS = [(255,0,0), (0,255,0), (0,0,255), (255, 255, 255)]
+    TRIGGER_AUTO_CYCLE_TIME = .2 # .1: .698158, .2: .695
 
     if args.debug: 
         with open(args.debug, 'w') as f:
@@ -108,7 +141,7 @@ if __name__ == '__main__':
         frame_range = tqdm(range(FIRST_FRAME, LAST_FRAME))
     for framenum in frame_range:
         frame_time = framenum / 30 + detector.start_time
-        if not detector.times_different(frame_time, last_frame_time):
+        if not detector.times_different(frame_time, last_frame_time) and abs(frame_time - last_frame_time) < TRIGGER_AUTO_CYCLE_TIME:
             for cap in caps:
                 cap.read()
             continue
@@ -133,30 +166,33 @@ if __name__ == '__main__':
             if not ret:
                 break
 
-            if framenum % SKIP_FRAMES == 0:
-                Zs = []
-                positions, boxes, feature_vecs = detector.get_person_boxes(frame, i, frame_time)
-                for pos, box in zip(positions, boxes):
-                    x0, y0, x1, y1 = box
-                    Zs.append(np.array([[pos[0], pos[1], 20, 50]]).T)
+
+            Zs = []
+            positions, boxes, feature_vecs = detector.get_person_boxes(frame, i, frame_time)
+            for pos, box in zip(positions, boxes):
+                x0, y0, x1, y1 = box
+                Zs.append(np.array([[pos[0], pos[1], 20, 50]]).T)
+                if args.viewer:
                     cv.rectangle(frame, (int(x0),int(y0)), (int(x1),int(y1)), (255,0,0), 2)
 
-                a.local_data_association(Zs, feature_vecs)
-                observations += a.get_observations()  
+            a.local_data_association(Zs, feature_vecs)
+            observations += a.get_observations()  
 
-                if args.viewer:
-                    cv.imshow(f"frame{i}", frame)
+            if args.viewer:
+                cv.imshow(f"frame{i}", frame)
 
-        if framenum % SKIP_FRAMES == 0:
-            for a in agents:
-                a.add_observations(observations)
-                a.dkf()
-                a.tracker_manager()
-                inconsistencies += a.inconsistencies
-                if args.debug:
-                    with open(args.debug, 'a') as f:
-                        np.set_printoptions(precision=1)
-                        print(a, file=f)
+
+        for a in agents:
+            a.add_observations(observations)
+            a.dkf()
+            a.tracker_manager()
+            ic.add_groups(a.camera_id, a.groups_by_id)
+            a.groups_by_id = []
+            if args.debug:
+                with open(args.debug, 'a') as f:
+                    np.set_printoptions(precision=1)
+                    print(a, file=f)
+        inconsistencies += ic.count_inconsistencies()
 
         if framenum == FIRST_FRAME:
             topview = np.ones((400,400,3))*255
@@ -165,45 +201,41 @@ if __name__ == '__main__':
         else:
             combined = topview.copy()
 
-            for i, a in enumerate(agents):
+            if args.viewer:
+                for i, a in enumerate(agents):
 
-                Xs, colors = a.get_trackers()   
+                    Xs, colors = a.get_trackers()   
 
-                for X, color in zip(Xs, colors):
-                    x, y, w, h, _, _ = X.reshape(-1).tolist()
-                    x, y = x*20 + 200, y*20 + 200
-                    cv.circle(combined, (int(x),int(y)), int(w/2), color, 4)
+                    for X, color in zip(Xs, colors):
+                        x, y, w, h, _, _ = X.reshape(-1).tolist()
+                        x, y = x*20 + 200, y*20 + 200
+                        cv.circle(combined, (int(x),int(y)), int(w/2), color, 4)
             
             ped_ids, peds = GT.ped_positions(frame_time)
             gt_dict = dict()
             for ped_id, ped_pos in zip(ped_ids, peds):
                 gt_dict[ped_id] = ped_pos[0:2]
-                pt = (int(ped_pos[0]*20 + 200), int(ped_pos[1]*20 + 200))
-                cv.drawMarker(combined, pt, getTrackColor(int(ped_id)), getMarkerType(i), thickness=2)
+                if args.viewer:
+                    pt = (int(ped_pos[0]*20 + 200), int(ped_pos[1]*20 + 200))
+                    cv.drawMarker(combined, pt, getTrackColor(int(ped_id)), getMarkerType(i), thickness=2)
             
             if framenum > 250:    
                 for a, me in zip(agents, mes):
                     me.update(gt_dict, a.get_trackers(format='dict'))
-                    if args.metric_frequency != 0 and framenum % int((1 / args.metric_frequency) * 30) == 0:
-                        me.display_results()
-                        print(f'inconsistencies: {inconsistencies}')
+                if args.metric_frequency != 0 and frame_time - last_printed_metrics > 1 / args.metric_frequency:
+                    print_results(mes, inconsistencies)
+                    last_printed_metrics = frame_time
 
             if args.viewer and framenum % SKIP_FRAMES == 0:
                 cv.imshow('topview', combined)
 
-        cv.waitKey(5)
+        if args.viewer:
+            cv.waitKey(5)
         if framenum >= LAST_FRAME:
             break
 
     cap.release()
     cv.destroyAllWindows()
-    
-    mota, motp = 0, 0
-    for me in mes:
-        mota += me.mota / numCams
-        motp += me.motp / numCams
         
     print('FINAL RESULTS')
-    print(f'mota: {mota}')
-    print(f'motp: {motp}')
-    print(f'inconsistencies: {inconsistencies}')
+    print_results(mes, inconsistencies)
