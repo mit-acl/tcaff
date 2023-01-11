@@ -1,8 +1,5 @@
 #!/usr/bin/python3
 
-import matplotlib.pyplot as plt
-import sys
-
 class MetricHandler:
 
     def __init__(self, metric_types):
@@ -71,37 +68,47 @@ def parse_metric_file(metric_file, metric_types=['mota', 'motp', 'inconsistencie
     return mh
 
 if __name__ == '__main__':
-    metric_file = sys.argv[1]
+    import matplotlib.pyplot as plt
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Parse and plot metrics')
+    parser.add_argument('-f', '--metric-file',
+            type=str,
+            default='/home/masonbp/ford-project/data/mot_metrics/fp_fn_switch_2_fix_timing.txt',
+            help='Metric file to be parsed')
+    parser.add_argument('-p', '--plot-type',
+            type=str,
+            default='avg',
+            help='Plot type: \'avg\', \'all\', \'box\'')
+    parser.add_argument('-m', '--metric',
+            type=str,
+            default='mota',
+            help='Metric to be plotted: mota, motp, precision, recall, etc.')
+    args = parser.parse_args()
+    
+    metric_file = args.metric_file
+    plot_type = args.plot_type
+    metric = args.metric
     mh = parse_metric_file(metric_file)
 
-
-
     print(mh)
-    # x, y = mh.get_metric_along_line('mota', lambda x: x[0] == 0, 1, ret_type='avg')
-    # plt.plot(x, y, 'o')
-    # plt.show()
 
-    # x, y = mh.get_metric_along_line('mota', lambda x: x[1] == 0.0, 0, ret_type='all')
-    # plt.plot(x, y, 'o')
-    # plt.title('All Trials MOTA')
+    if plot_type == 'avg':
+        x, y = mh.get_metric_along_line(metric, lambda x: x[1] == 0.0, 0, ret_type='avg')
+        plt.plot(x, y, '--o')
+        plt.title(f'Average {metric}')
+        plt.xlabel('Translation Alignment Error Standard Dev (m)')
+        plt.ylabel(metric)
+        plt.grid(True)
+        plt.show()
+
+    # X, Y = mh.get_metric_along_line('mota', lambda x: x[1] == 0.0, 0, ret_type='box')
+    # Y_sorted = [y for x, y in sorted(zip(X, Y))]
+    # X_sorted = sorted(X)
+    # fig, ax1 = plt.subplots()
+    # ax1.boxplot(Y_sorted[1:], notch=False, vert=True, whis=1.5)
+    # ax1.set_xticklabels(X_sorted[1:])
+    # plt.title('MOTA Boxplots')
     # plt.xlabel('Translation Error Standard Dev (m)')
     # plt.ylabel('MOTA')
     # plt.show()
-
-    x, y = mh.get_metric_along_line('mota', lambda x: x[1] == 0.0, 0, ret_type='avg')
-    plt.plot(x, y, 'o')
-    plt.title('Average MOTA')
-    plt.xlabel('Translation Error Standard Dev (m)')
-    plt.ylabel('MOTA')
-    plt.show()
-
-    X, Y = mh.get_metric_along_line('mota', lambda x: x[1] == 0.0, 0, ret_type='box')
-    Y_sorted = [y for x, y in sorted(zip(X, Y))]
-    X_sorted = sorted(X)
-    fig, ax1 = plt.subplots()
-    ax1.boxplot(Y_sorted[1:], notch=False, vert=True, whis=1.5)
-    ax1.set_xticklabels(X_sorted[1:])
-    plt.title('MOTA Boxplots')
-    plt.xlabel('Translation Error Standard Dev (m)')
-    plt.ylabel('MOTA')
-    plt.show()
