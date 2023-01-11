@@ -47,20 +47,27 @@ def get_avg_metric(metric, mes, divide_by_frames=False):
         m_avg += m_val
     return m_avg
 
-def print_results(mes, inconsistencies):
+def print_results(mes, inconsistencies, agents):
     mota = get_avg_metric('mota', mes)
     motp = get_avg_metric('motp', mes)
     fp = get_avg_metric('num_false_positives', mes, divide_by_frames=True)
     fn = get_avg_metric('num_misses', mes, divide_by_frames=True)
     switch = get_avg_metric('num_switches', mes, divide_by_frames=True)
-    
+    precision = get_avg_metric('precision', mes)
+    recall = get_avg_metric('recall', mes)
+    total_num_tracks = sum([len(a.tracker_mapping) / numCams for a in agents]) / numCams
+    incon_per_track = inconsistencies / total_num_tracks if total_num_tracks else 0.0
+
     print(f'mota: {mota}')
     print(f'motp: {motp}')
     print(f'fp: {fp}')
     print(f'fn: {fn}')
     print(f'switch: {switch}')
     print(f'inconsistencies: {inconsistencies}')
-    
+    print(f'precision: {precision}')
+    print(f'recall: {recall}')
+    print(f'num_tracks: {total_num_tracks}')
+    print(f'incon_per_track: {incon_per_track}')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Annotate video sequence with ground truth')
@@ -223,7 +230,7 @@ if __name__ == '__main__':
                 for a, me in zip(agents, mes):
                     me.update(gt_dict, a.get_trackers(format='dict'))
                 if args.metric_frequency != 0 and frame_time - last_printed_metrics > 1 / args.metric_frequency:
-                    print_results(mes, inconsistencies)
+                    print_results(mes, inconsistencies, agents)
                     last_printed_metrics = frame_time
 
             if args.viewer and framenum % SKIP_FRAMES == 0:
@@ -238,4 +245,4 @@ if __name__ == '__main__':
     cv.destroyAllWindows()
         
     print('FINAL RESULTS')
-    print_results(mes, inconsistencies)
+    print_results(mes, inconsistencies, agents)
