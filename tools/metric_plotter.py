@@ -49,24 +49,24 @@ class MetricHandler:
 def parse_metric_file(metric_file, metric_types=['mota', 'motp', 'inconsistencies', 'fp', 'fn', 'switch']):
     mh = MetricHandler(metric_types=metric_types)
     with open(metric_file, 'r') as f:
-        trial = []
+        trial = dict()
         for line in f.readlines():
             if line.strip() and line.strip()[0] == '#': 
                 continue
             elif 'sigma_t' and 'sigma_r' in line:
-                assert not trial
+                if trial:
+                    for metric, val in trial['metrics'].items():
+                        mh.add_trial(metric, trial['identifier'], val)
+                    trial = dict()
+
                 sigma_t = line.split('&')[0].split('=')[1].strip()
                 sigma_r = line.split('&')[1].split('=')[1].strip()
-                trial.append((float(sigma_t), float(sigma_r)))
+                trial['identifier'] = (float(sigma_t), float(sigma_r))
+                trial['metrics'] = dict()                    
             else:
                 for i, metric in enumerate(metric_types):
                     if metric in line:
-                        assert len(trial) == i + 1
-                        trial.append(float(line.split(f'{metric}:')[1].strip()))
-                        if i == len(metric_types) - 1: # if last metric type
-                            for j in range(1, len(trial)):
-                                mh.add_trial(metric_types[j-1], trial[0], trial[j])
-                            trial = []
+                        trial['metrics'][metric] = float(line.split(f'{metric}:')[1].strip())                            
                         break
     return mh
 
