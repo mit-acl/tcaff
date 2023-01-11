@@ -89,7 +89,7 @@ if __name__ == '__main__':
     metric_file = args.metric_file
     plot_type = args.plot_type
     metric = args.metric
-    mh = parse_metric_file(metric_file)
+    mh = parse_metric_file(metric_file, metric_types=list(set([metric, 'mota'])))
 
     print(mh)
 
