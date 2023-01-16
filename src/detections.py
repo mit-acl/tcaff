@@ -33,7 +33,7 @@ class Detections():
             # Maybe using rotvec?
             self.R_offset = Rot.from_euler('xyz', [np.random.normal(0, sigma_r), np.random.normal(0, sigma_r), np.random.normal(0, sigma_r)]).as_matrix()
         if sigma_t != 0:
-            self.T_offset = np.array([np.random.normal(0, sigma_t/np.sqrt(3)), np.random.normal(0, sigma_t/np.sqrt(3)), np.random.normal(0, sigma_t/np.sqrt(3))]).reshape((3,1))
+            self.T_offset = np.array([np.random.normal(0, sigma_t/np.sqrt(2)), np.random.normal(0, sigma_t/np.sqrt(2)), 0.0]).reshape((3,1))
         
         # Iterate across each frame
         for i, objects in enumerate(object_lists):

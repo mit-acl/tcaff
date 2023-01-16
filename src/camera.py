@@ -6,9 +6,8 @@ from tracker import Tracker
 
 class Camera():
 
-    def __init__(self, camera_id, Tau_LDA=1, alpha=2000, kappa=4):
+    def __init__(self, camera_id, Tau_LDA, Tau_GDA, alpha, kappa, n_meas_init=2):
         # TODO: Tune for Tau
-        Tau_GDA = Tau_LDA
         self.Tau_LDA = Tau_LDA
         self.Tau_GDA = Tau_GDA
         self.alpha = alpha
@@ -16,7 +15,7 @@ class Camera():
         self.trackers = []
         self.new_trackers = []
         self.next_available_id = 0
-        self.n_meas_to_init_tracker = 2
+        self.n_meas_to_init_tracker = n_meas_init
         self.camera_id = camera_id
         self.tracker_mapping = dict()
         self.unassociated_obs = []
