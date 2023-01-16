@@ -110,14 +110,14 @@ if __name__ == '__main__':
 
     root = pathlib.Path(args.root)
     if args.run == 1:
-        bagfile = 'run01_2022-12-16-15-40-22.bag'
+        bagfile = 'run01_filtered.bag'
         num_peds = 3
         FIRST_FRAME = 300
         LAST_FRAME = 5690
     elif args.run == 3:
         bagfile = 'run03_filtered.bag'
         num_peds = 5
-        FIRST_FRAME = 5
+        FIRST_FRAME = 600
         LAST_FRAME = 7500
     bagfile = str(root / bagfile)
     GT = GroundTruth(bagfile, [f'{i+1}' for i in range(num_peds)], 'RR01')
@@ -126,11 +126,14 @@ if __name__ == '__main__':
     caps = getVideos(root, run=args.run, numCams=numCams)
     agents = []
     mes = []
+    detector = PersonDetector(run=args.run, sigma_r=args.std_dev_rotation*np.pi/180, sigma_t=args.std_dev_translation, num_cams=numCams)
     for i in range(numCams):
         agents.append(Camera(i, Tau_LDA=PARAMS.TAU_LDA, Tau_GDA=PARAMS.TAU_GDA, kappa=PARAMS.KAPPA,
                              alpha=PARAMS.ALPHA, n_meas_init=PARAMS.N_MEAS_TO_INIT_TRACKER))
-        mes.append(MetricEvaluator())
-    detector = PersonDetector(run=args.run, sigma_r=args.std_dev_rotation*np.pi/180, sigma_t=args.std_dev_translation, num_cams=numCams)
+        _, _, R_noise, T_noise = detector.get_cam_pose(i)
+        R_noise, T_noise = R_noise[0:2, 0:2], T_noise[0:2, :]
+        mes.append(MetricEvaluator(noise_rot=R_noise, noise_tran=T_noise))
+        
     inconsistencies = 0
     ic = InconsistencyCounter()
     last_printed_metrics = 0
@@ -231,7 +234,7 @@ if __name__ == '__main__':
                     pt = (int(ped_pos[0]*topview_size/20 + topview_size/2), int(ped_pos[1]*topview_size/20 + topview_size/2))
                     cv.drawMarker(combined, pt, getTrackColor(int(ped_id)), getMarkerType(i), thickness=2, markerSize=30)
             
-            if framenum > 300:    
+            if framenum > 1:    
                 for a, me in zip(agents, mes):
                     me.update(gt_dict, a.get_trackers(format='dict'))
                 if args.metric_frequency != 0 and frame_time - last_printed_metrics > 1 / args.metric_frequency:

@@ -258,6 +258,7 @@ class Camera():
         
         # # associate with local indexes
         STOP_INCONSISTENCIES = True
+        # TODO: This is a simple hack. It improves MOT performance, but can also lead to hackish results (gruops with common elements)
         if STOP_INCONSISTENCIES:
             if similarity_scores.shape[0] != similarity_scores.shape[1]:
                 for group in new_tracker_groups:
@@ -267,6 +268,18 @@ class Camera():
                         if similarity_scores[i,local_idx] < 1:
                             group.add(local_idx)
                             break
+            # need_merging = []
+            # for group in new_tracker_groups:
+            #     for other_group in new_tracker_groups:
+            #         if group == other_group: continue
+            #         for el in group:
+            #             if el in other_group:
+            #                 need_merging.append((group, other_group))
+            #                 break
+            # for pair in need_merging:
+            #     if pair[0] in new_tracker_groups and pair[1] in new_tracker_groups:
+            #         new_tracker_groups.remove(pair[0]); new_tracker_groups.remove(pair[1])
+            #         new_tracker_groups.append(pair[0].union(pair[1]))    
         else:
             if similarity_scores.shape[0] != similarity_scores.shape[1]:
                 for group in new_tracker_groups:

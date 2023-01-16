@@ -21,7 +21,7 @@ class InconsistencyCounter():
             agent_id, el_id = el
             if agent_id == agent_num:
                 agent_elements.append(el)
-                assert el not in self.elements, 'element should only be added once'
+                assert el not in self.elements, f'element should only be added once.\nagent_num: {agent_num}\nself.associations: {self.associations}\nself.elements: {self.elements}\nel: {el}\ngroup: {group}'
                 self.elements.append(el)
             else:
                 non_agent_elements.append(el)

@@ -31,7 +31,7 @@ class Detections():
         if sigma_r != 0:
             # TODO: Adding subsequent rotations isn't really Gaussian, if small should be close enough?
             # Maybe using rotvec?
-            self.R_offset = Rot.from_euler('xyz', [np.random.normal(0, sigma_r), np.random.normal(0, sigma_r), np.random.normal(0, sigma_r)]).as_matrix()
+            self.R_offset = Rot.from_euler('z', np.random.normal(0, sigma_r)).as_matrix()
         if sigma_t != 0:
             self.T_offset = np.array([np.random.normal(0, sigma_t/np.sqrt(2)), np.random.normal(0, sigma_t/np.sqrt(2)), 0.0]).reshape((3,1))
         

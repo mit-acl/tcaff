@@ -41,3 +41,6 @@ class PersonDetector():
             if detections.idx(t1) == detections.idx(t2):
                 return False
         return True
+    
+    def get_cam_pose(self, cam_num):
+        return self.detections[cam_num].R, self.detections[cam_num].T, self.detections[cam_num].R_offset, self.detections[cam_num].T_offset
