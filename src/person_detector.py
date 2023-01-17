@@ -49,5 +49,18 @@ class PersonDetector():
     def get_cam_T(self, cam_num):
         return np.concatenate([np.concatenate([self.detections[cam_num].R, self.detections[cam_num].T], axis=1), [[0, 0, 0, 1]]], axis=0)
 
-    # def get_T_cam1_cam2(self, cam1, cam2, incl_noise=False):
-    #     if not incl_noise
+    def get_T_cam2_cam1(self, cam1, cam2, incl_noise=False):
+        if not incl_noise:
+            R1, t1, _, _ = self.get_cam_pose(cam1)
+            R2, t2, _, _ = self.get_cam_pose(cam2)
+        else:
+            R1, t1, R1_noise, t1_noise = self.get_cam_pose(cam1)
+            R1 = R1_noise.T @ R1
+            t1 = t1 - t1_noise
+            R2, t2, R2_noise, t2_noise = self.get_cam_pose(cam2)
+            R2 = R2_noise.T @ R2
+            t2 = t2 - t2_noise
+        T_cam2_cam1 = np.concatenate([np.concatenate([
+            R1.T @ R2, R1.T @ (t2  - t1)
+            ], axis=1), [[0., 0., 0., 1.]]], axis=0)
+        return T_cam2_cam1

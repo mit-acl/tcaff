@@ -38,15 +38,11 @@ def getMarkerType(cam):
         return cv.MARKER_TRIANGLE_UP
     
 def give_cam_correct_transforms(cam, detector, numCams=4):
-    R_local, t_local, _, _ = detector.get_cam_pose(cam.camera_id)
     for i in range(numCams):
         if i == cam.camera_id:
             continue
         cam.T_other_global[i] = detector.get_cam_T(i)
-        R_other, t_other, _, _ = detector.get_cam_pose(i)
-        cam.T_other_local[i] = np.concatenate([np.concatenate([
-            R_local.T @ R_other, R_local.T @ (t_other - t_local)
-            ], axis=1), [[0., 0., 0., 1.]]], axis=0)
+        cam.T_other_local[i] = detector.get_T_cam2_cam1(cam.camera_id, i, incl_noise=True)
         
 def get_avg_metric(metric, mes, divide_by_frames=False):
     num_cams=len(mes)
@@ -124,7 +120,7 @@ if __name__ == '__main__':
         bagfile = 'run01_filtered.bag'
         num_peds = 3
         FIRST_FRAME = 300
-        LAST_FRAME = 5690
+        LAST_FRAME = 5640
     elif args.run == 3:
         bagfile = 'run03_filtered.bag'
         num_peds = 5
@@ -143,9 +139,9 @@ if __name__ == '__main__':
         agents.append(Camera(i, Tau_LDA=PARAMS.TAU_LDA, Tau_GDA=PARAMS.TAU_GDA, kappa=PARAMS.KAPPA,
                              alpha=PARAMS.ALPHA, n_meas_init=PARAMS.N_MEAS_TO_INIT_TRACKER, T=T_cam))
         give_cam_correct_transforms(agents[i], detector, numCams=numCams)
-        _, _, R_noise, T_noise = detector.get_cam_pose(i)
+        _, t_cam, R_noise, T_noise = detector.get_cam_pose(i)
         R_noise, T_noise = R_noise[0:2, 0:2], T_noise[0:2, :]
-        mes.append(MetricEvaluator(noise_rot=R_noise, noise_tran=T_noise))
+        mes.append(MetricEvaluator(t_cam=t_cam[0:2,0:1], noise_rot=R_noise, noise_tran=T_noise))
         
     inconsistencies = 0
     ic = InconsistencyCounter()

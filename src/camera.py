@@ -1,6 +1,7 @@
 import numpy as np
 from numpy.linalg import norm as norm
 from scipy.optimize import linear_sum_assignment
+from copy import deepcopy
 
 from tracker import Tracker
 import config.tracker_params as TRACK_PARAM
@@ -171,7 +172,8 @@ class Camera():
         
         self.groups_by_id = self._create_trackers(tracker_groups, tracked_states)
         unassociated_obs = self.unassociated_obs
-        len_unassociated_obs = self.add_observations(unassociated_obs)
+        len_unassociated_obs = self.add_observations(unassociated_obs, transform=False)
+            # transform has already occured at this point
         assert len_unassociated_obs == 0
         
         self.manage_deletions()
@@ -183,10 +185,15 @@ class Camera():
             observations.append(tracker.observation_msg())
         return observations
 
-    def add_observations(self, observations):
+    def add_observations(self, observations, transform=True):
+        # TODO: Probably not the best memory usage here...
+        observations = deepcopy(observations)
         self.unassociated_obs = []
+        # Process each observation
         for obs in observations:
-            obs = self._transform_obs(obs)
+            if transform:
+                obs = self._transform_obs(obs)
+            # Check if we recognize the tracker id
             if obs.tracker_id in self.tracker_mapping: 
                 target_tracker_id = self.tracker_mapping[obs.tracker_id]
                 for tracker in self.trackers:
@@ -195,6 +202,7 @@ class Camera():
                         break
             else:
                 matched = False
+                # Check if the incoming message has already been paired to one of our trackers
                 for mid in obs.mapped_ids:
                     if mid in self.tracker_mapping:
                         matched = True
@@ -205,6 +213,7 @@ class Camera():
                                 tracker.observation_update(obs)
                                 break
                         break
+                # Add to unassociated_obs for tracker initialization if this is new
                 if not matched:                        
                     assert obs.has_appearance_info, f'From camera: {self.camera_id}, No appearance info: {obs}'
                     self.unassociated_obs.append(obs)

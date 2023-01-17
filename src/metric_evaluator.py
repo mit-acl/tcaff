@@ -1,10 +1,12 @@
 import numpy as np
 import motmetrics as mm
+from copy import deepcopy
 
 class MetricEvaluator():
 
-    def __init__(self, max_d=.5, noise_rot=np.eye(2), noise_tran=np.zeros((2,1))):
+    def __init__(self, t_cam, max_d=.5, noise_rot=np.eye(2), noise_tran=np.zeros((2,1))):
         self.max_d = max_d
+        self.t_cam = t_cam
         self.R_noise = noise_rot
         self.t_noise = noise_tran
         self.acc = mm.MOTAccumulator(auto_id=True)
@@ -46,10 +48,11 @@ class MetricEvaluator():
     
     def update(self, gt_dict, hyp_dict):
         # put ground truth into camera frame
+        gt_dict = deepcopy(gt_dict)
         for gt_id in gt_dict:
             gt_pos = np.array(gt_dict[gt_id]).reshape((-1,1))
             gt_pos_og_shape = gt_dict[gt_id].shape
-            gt_dict[gt_id] = (self.R_noise @ gt_pos + self.t_noise).reshape(gt_pos_og_shape)
+            gt_dict[gt_id] = (self.R_noise @ (gt_pos - self.t_cam) + self.t_cam + self.t_noise).reshape(gt_pos_og_shape)
             
         gt_id_list, gt_pt_matrix = self._matrix_list_form(gt_dict)
         hyp_id_list, hyp_pt_matrix = self._matrix_list_form(hyp_dict)
