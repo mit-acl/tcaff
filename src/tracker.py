@@ -2,22 +2,17 @@ import numpy as np
 from numpy.linalg import inv
 from observation_msg import ObservationMsg
 from copy import deepcopy
+
+import config.tracker_params as PARAM
 class Tracker():
 
-    def __init__(self, camera_id, tracker_id, estimated_state, feature_vec, Ts=1):
-        self.A = np.eye(6); self.A[0,4] = Ts; self.A[1,5] = Ts
+    def __init__(self, camera_id, tracker_id, estimated_state, feature_vec): #, Ts=1):
+        self.A = PARAM.A
         # TODO: Something about my Ts seems to be off, changing it significantly changed results
-        self.H = np.eye(4,6)
-        self.Q = np.array([
-            [(Ts**4)/4, 0, 0, 0, (Ts**3)/2, 0],
-            [0, (Ts**4)/4, 0, 0, 0, (Ts**3)/2],
-            [0,0,1,0,0,0],
-            [0,0,0,1,0,0],
-            [(Ts**3)/2,0,0,0,Ts**2,0],
-            [0,(Ts**3)/2,0,0,0,Ts**2]
-        ])
-        self.R = np.eye(4)*3
-        self.P = np.eye(6)
+        self.H = PARAM.H
+        self.Q = PARAM.Q
+        self.R = PARAM.R
+        self.P = PARAM.P
         self.V = self.P[0:2,0:2] + self.R[0:2,0:2] # Pxy + Rxy
 
         self._id = (camera_id, tracker_id)
@@ -31,7 +26,6 @@ class Tracker():
         self._ell = 0
         self._seen = False
         self.seen_by_this_camera = False
-        self.Ts = Ts
         self.color = (np.random.randint(0,255), np.random.randint(0,255), np.random.randint(0,255))
         self.to_str = ''
 
