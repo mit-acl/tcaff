@@ -3,10 +3,11 @@ from numpy.linalg import norm as norm
 from scipy.optimize import linear_sum_assignment
 
 from tracker import Tracker
+import config.tracker_params as TRACK_PARAM
 
 class Camera():
 
-    def __init__(self, camera_id, Tau_LDA, Tau_GDA, alpha, kappa, n_meas_init=2):
+    def __init__(self, camera_id, Tau_LDA, Tau_GDA, alpha, kappa, T, n_meas_init=2):
         # TODO: Tune for Tau
         self.Tau_LDA = Tau_LDA
         self.Tau_GDA = Tau_GDA
@@ -21,6 +22,9 @@ class Camera():
         self.unassociated_obs = []
         self.inconsistencies = 0
         self.groups_by_id = []
+        self.T_local_global = T
+        self.T_other_global = dict() # other camera's transformations to from their own frame to global frame
+        self.T_other_local = dict() # other camera's transformations from their frame to this camera's local frame
 
     def local_data_association(self, Zs, feature_vecs):
         all_trackers = self.trackers + self.new_trackers
@@ -182,6 +186,7 @@ class Camera():
     def add_observations(self, observations):
         self.unassociated_obs = []
         for obs in observations:
+            obs = self._transform_obs(obs)
             if obs.tracker_id in self.tracker_mapping: 
                 target_tracker_id = self.tracker_mapping[obs.tracker_id]
                 for tracker in self.trackers:
@@ -355,7 +360,38 @@ class Camera():
             groups_by_id.append(group_by_id)
         
         return groups_by_id
-
+    
+    def _transform_obs(self, obs):
+        # TODO: Right now I am assuming H and R are the same in each tracker!
+        obs_cam = obs.tracker_id[0]
+        if obs_cam not in self.T_other_global or obs_cam not in self.T_other_local:
+            return obs
+        if obs_cam == self.camera_id:
+            return obs
+        
+        # Extract z and correct
+        # TODO: Assuming H is identity matrix (or 1s along diag)
+        if obs.u is not None:
+            z = TRACK_PARAM.R @ obs.u[0:4,:]
+            p_meas = np.concatenate([z[0:2,:], [[0]]], axis=0)
+            p_meas_other = self.T_other_global[obs_cam][0:3,0:3].T @ (p_meas - self.T_other_global[obs_cam][0:3,3:4])
+            p_meas_local = self.T_other_local[obs_cam][0:3,0:3] @ p_meas_other + self.T_other_local[obs_cam][0:3,3:4]
+            p_meas_corrected = (self.T_local_global @ np.concatenate([p_meas_local, [[1]]], axis=0))[0:2,:]
+            obs.u = TRACK_PARAM.H.T @ np.linalg.inv(TRACK_PARAM.R) @ np.concatenate([p_meas_corrected, z[2:]], axis=0)
+            
+        # Extract xbar and correct
+        pos = np.concatenate([obs.xbar[0:2,:], [[0]]], axis=0)
+        vel = np.concatenate([obs.xbar[4:6,:], [[0]]], axis=0)
+        pos_other = self.T_other_global[obs_cam][0:3,0:3].T @ (pos - self.T_other_global[obs_cam][0:3,3:4])
+        vel_other = self.T_other_global[obs_cam][0:3,0:3].T @ vel
+        pos_local = self.T_other_local[obs_cam][0:3,0:3] @ pos_other + self.T_other_local[obs_cam][0:3,3:4]
+        vel_local = self.T_other_local[obs_cam][0:3,0:3] @ vel_other
+        pos_corrected = self.T_local_global @ np.concatenate([pos_local, [[1]]], axis=0)
+        vel_corrected = self.T_local_global[0:3, 0:3] @ vel_local
+        obs.xbar[0:2,:] = pos_corrected[0:2,:]
+        obs.xbar[4:6,:] = vel_corrected[0:2,:]
+        return obs
+        
     def manage_deletions(self):
         for tracker in self.trackers + self.new_trackers:
             tracker.cycle()

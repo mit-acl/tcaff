@@ -37,6 +37,17 @@ def getMarkerType(cam):
     if cam == 3:
         return cv.MARKER_TRIANGLE_UP
     
+def give_cam_correct_transforms(cam, detector, numCams=4):
+    R_local, t_local, _, _ = detector.get_cam_pose(cam.camera_id)
+    for i in range(numCams):
+        if i == cam.camera_id:
+            continue
+        cam.T_other_global[i] = detector.get_cam_T(i)
+        R_other, t_other, _, _ = detector.get_cam_pose(i)
+        cam.T_other_local[i] = np.concatenate([np.concatenate([
+            R_local.T @ R_other, R_local.T @ (t_other - t_local)
+            ], axis=1), [[0., 0., 0., 1.]]], axis=0)
+        
 def get_avg_metric(metric, mes, divide_by_frames=False):
     num_cams=len(mes)
     m_avg = 0
@@ -128,8 +139,10 @@ if __name__ == '__main__':
     mes = []
     detector = PersonDetector(run=args.run, sigma_r=args.std_dev_rotation*np.pi/180, sigma_t=args.std_dev_translation, num_cams=numCams)
     for i in range(numCams):
+        T_cam = detector.get_cam_T(i)
         agents.append(Camera(i, Tau_LDA=PARAMS.TAU_LDA, Tau_GDA=PARAMS.TAU_GDA, kappa=PARAMS.KAPPA,
-                             alpha=PARAMS.ALPHA, n_meas_init=PARAMS.N_MEAS_TO_INIT_TRACKER))
+                             alpha=PARAMS.ALPHA, n_meas_init=PARAMS.N_MEAS_TO_INIT_TRACKER, T=T_cam))
+        give_cam_correct_transforms(agents[i], detector, numCams=numCams)
         _, _, R_noise, T_noise = detector.get_cam_pose(i)
         R_noise, T_noise = R_noise[0:2, 0:2], T_noise[0:2, :]
         mes.append(MetricEvaluator(noise_rot=R_noise, noise_tran=T_noise))

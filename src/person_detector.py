@@ -1,6 +1,7 @@
 # import torchreid feature extractor
 from torchreid.utils import FeatureExtractor
 from detections import get_epfl_frame_info, get_static_test_detections
+import numpy as np
 
 class PersonDetector():
 
@@ -44,3 +45,9 @@ class PersonDetector():
     
     def get_cam_pose(self, cam_num):
         return self.detections[cam_num].R, self.detections[cam_num].T, self.detections[cam_num].R_offset, self.detections[cam_num].T_offset
+    
+    def get_cam_T(self, cam_num):
+        return np.concatenate([np.concatenate([self.detections[cam_num].R, self.detections[cam_num].T], axis=1), [[0, 0, 0, 1]]], axis=0)
+
+    # def get_T_cam1_cam2(self, cam1, cam2, incl_noise=False):
+    #     if not incl_noise
