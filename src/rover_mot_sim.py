@@ -4,7 +4,6 @@ import pathlib
 import numpy as np
 import cv2 as cv
 import matplotlib.pyplot as plt
-import cv_bridge
 from tqdm import tqdm
 
 from person_detector import PersonDetector
@@ -113,6 +112,9 @@ if __name__ == '__main__':
             type=int,
             default=4,
             help='Number of cameras to use in simulation')
+    parser.add_argument('--init-transform',
+            action='store_true',
+            help='Cameras know the transformations between each other')
     args = parser.parse_args()
 
     root = pathlib.Path(args.root)
@@ -138,7 +140,8 @@ if __name__ == '__main__':
         T_cam = detector.get_cam_T(i)
         agents.append(Camera(i, Tau_LDA=PARAMS.TAU_LDA, Tau_GDA=PARAMS.TAU_GDA, kappa=PARAMS.KAPPA,
                              alpha=PARAMS.ALPHA, n_meas_init=PARAMS.N_MEAS_TO_INIT_TRACKER, T=T_cam))
-        give_cam_correct_transforms(agents[i], detector, numCams=numCams)
+        if args.init_transform:
+            give_cam_correct_transforms(agents[i], detector, numCams=numCams)
         _, t_cam, R_noise, T_noise = detector.get_cam_pose(i)
         R_noise, T_noise = R_noise[0:2, 0:2], T_noise[0:2, :]
         mes.append(MetricEvaluator(t_cam=t_cam[0:2,0:1], noise_rot=R_noise, noise_tran=T_noise))
