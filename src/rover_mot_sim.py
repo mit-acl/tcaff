@@ -40,8 +40,7 @@ def give_cam_correct_transforms(cam, detector, numCams=4):
     for i in range(numCams):
         if i == cam.camera_id:
             continue
-        cam.T_other_global[i] = detector.get_cam_T(i)
-        cam.T_other_local[i] = detector.get_T_cam2_cam1(cam.camera_id, i, incl_noise=True)
+        cam.T_other[i] = detector.get_T_obj2_obj1(cam.camera_id, i, incl_noise=True)
         
 def get_avg_metric(metric, mes, divide_by_frames=False):
     num_cams=len(mes)

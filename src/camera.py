@@ -24,11 +24,11 @@ class Camera():
         self.inconsistencies = 0
         self.groups_by_id = []
         self.T_local_global = T
-        self.T_other_global = dict() # other camera's transformations to from their own frame to global frame
-        self.T_other_local = dict() # other camera's transformations from their frame to this camera's local frame
+        self.T_other = dict()
         self.recent_detection_list = []
         for i in range(50):
             self.recent_detection_list.append(None)
+        
 
     def local_data_association(self, Zs, feature_vecs):
         frame_detections = []
@@ -390,7 +390,7 @@ class Camera():
     def _transform_obs(self, obs):
         # TODO: Right now I am assuming H and R are the same in each tracker!
         obs_cam = obs.tracker_id[0]
-        if obs_cam not in self.T_other_global or obs_cam not in self.T_other_local:
+        if obs_cam not in self.T_other:
             return obs
         if obs_cam == self.camera_id:
             return obs
@@ -399,21 +399,15 @@ class Camera():
         # TODO: Assuming H is identity matrix (or 1s along diag)
         if obs.u is not None:
             z = TRACK_PARAM.R @ obs.u[0:4,:]
-            p_meas = np.concatenate([z[0:2,:], [[0]]], axis=0)
-            p_meas_other = self.T_other_global[obs_cam][0:3,0:3].T @ (p_meas - self.T_other_global[obs_cam][0:3,3:4])
-            p_meas_local = self.T_other_local[obs_cam][0:3,0:3] @ p_meas_other + self.T_other_local[obs_cam][0:3,3:4]
-            p_meas_corrected = (self.T_local_global @ np.concatenate([p_meas_local, [[1]]], axis=0))[0:2,:]
+            p_meas = np.concatenate([z[0:2,:], [[0.], [1.]]], axis=0)
+            p_meas_corrected = (self.T_other[obs_cam] @ p_meas)[0:2,:]
             obs.u = TRACK_PARAM.H.T @ np.linalg.inv(TRACK_PARAM.R) @ np.concatenate([p_meas_corrected, z[2:]], axis=0)
             
         # Extract xbar and correct
-        pos = np.concatenate([obs.xbar[0:2,:], [[0]]], axis=0)
+        pos = np.concatenate([obs.xbar[0:2,:], [[0], [1]]], axis=0)
         vel = np.concatenate([obs.xbar[4:6,:], [[0]]], axis=0)
-        pos_other = self.T_other_global[obs_cam][0:3,0:3].T @ (pos - self.T_other_global[obs_cam][0:3,3:4])
-        vel_other = self.T_other_global[obs_cam][0:3,0:3].T @ vel
-        pos_local = self.T_other_local[obs_cam][0:3,0:3] @ pos_other + self.T_other_local[obs_cam][0:3,3:4]
-        vel_local = self.T_other_local[obs_cam][0:3,0:3] @ vel_other
-        pos_corrected = self.T_local_global @ np.concatenate([pos_local, [[1]]], axis=0)
-        vel_corrected = self.T_local_global[0:3, 0:3] @ vel_local
+        pos_corrected = self.T_other[obs_cam] @ pos
+        vel_corrected = self.T_other[obs_cam][0:3, 0:3] @ vel
         obs.xbar[0:2,:] = pos_corrected[0:2,:]
         obs.xbar[4:6,:] = vel_corrected[0:2,:]
         return obs
