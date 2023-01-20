@@ -21,6 +21,8 @@ class Tracker():
         self._state = np.concatenate((estimated_state, np.zeros((2,1))), 0)
         self._a = [feature_vec] if not isinstance(feature_vec, list) else feature_vec
         self.include_appearance = False
+        self.recent_detections = []
+        self.rec_det_max_len = PARAM.n_recent_dets
 
         self.frames_seen = 1
         self._ell = 0
@@ -62,6 +64,7 @@ class Tracker():
         self._measurement = measurement
         if feature_vec is not None:
             self._a.append(feature_vec)
+        self._add_recent_detection(measurement[0:2,:].reshape(-1,1))
 
     def predict(self):
         xhat = self._state
@@ -145,11 +148,17 @@ class Tracker():
         else:
             self.to_str = f'{self._id}, state: {np.array2string(self._state.T,precision=2)},' + \
                 f' not seen.'
+            self._add_recent_detection(None)
         self._seen = False
         self._ell += 1
         
     def include_appearance_in_obs(self):
         self.include_appearance = True
+        
+    def _add_recent_detection(self, detection):
+        self.recent_detections.insert(0, detection)
+        self.recent_detections = \
+            self.recent_detections[:min(len(self.recent_detections), self.rec_det_max_len)]
 
     def __str__(self):
         return self.to_str

@@ -26,8 +26,16 @@ class Camera():
         self.T_local_global = T
         self.T_other_global = dict() # other camera's transformations to from their own frame to global frame
         self.T_other_local = dict() # other camera's transformations from their frame to this camera's local frame
+        self.recent_detection_list = []
+        for i in range(50):
+            self.recent_detection_list.append(None)
 
     def local_data_association(self, Zs, feature_vecs):
+        frame_detections = []
+        for z in Zs:
+            frame_detections.append(z[0:2,:].reshape(-1,1))
+        self.recent_detection_list.insert(0, frame_detections)
+        self.recent_detection_list = self.recent_detection_list[:-1]
         all_trackers = self.trackers + self.new_trackers
         geometry_scores = np.zeros((len(all_trackers), len(Zs)))
         appearance_scores = np.zeros((len(all_trackers), len(Zs)))
@@ -234,6 +242,15 @@ class Camera():
             for tracker in self.trackers:
                 tracker_dict[tracker.id] = np.array(tracker.state[0:2,:].reshape(-1))
             return tracker_dict
+        
+    def get_recent_detections(self, from_trackers=False):
+        if from_trackers:
+            recent_detections = []
+            for tracker in self.trackers:
+                recent_detections.append(tracker.recent_detections)
+            return recent_detections
+        else: # raw detections
+            return self.recent_detection_list
 
     def _get_tracker_groups(self, similarity_scores):
         # TODO: Maximum clique kind of thing going on here...

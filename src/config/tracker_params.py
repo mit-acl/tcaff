@@ -14,3 +14,5 @@ Q = np.array([
 ])
 R = np.eye(4)*2
 P = np.eye(6)
+
+n_recent_dets = 50 # how many recent detections to keep
