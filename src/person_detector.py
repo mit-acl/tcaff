@@ -2,6 +2,7 @@
 from torchreid.utils import FeatureExtractor
 from detections import get_epfl_frame_info, get_static_test_detections
 import numpy as np
+from numpy.linalg import inv
 
 class PersonDetector():
 
@@ -48,19 +49,24 @@ class PersonDetector():
     
     def get_cam_T(self, cam_num):
         return np.concatenate([np.concatenate([self.detections[cam_num].R, self.detections[cam_num].T], axis=1), [[0, 0, 0, 1]]], axis=0)
-
-    def get_T_cam2_cam1(self, cam1, cam2, incl_noise=False):
-        if not incl_noise:
-            R1, t1, _, _ = self.get_cam_pose(cam1)
-            R2, t2, _, _ = self.get_cam_pose(cam2)
-        else:
+    
+    def get_T_obj2_obj1(self, cam1, cam2, incl_noise=False):
+        if incl_noise:
             R1, t1, R1_noise, t1_noise = self.get_cam_pose(cam1)
-            R1 = R1_noise.T @ R1
-            t1 = t1 - t1_noise
             R2, t2, R2_noise, t2_noise = self.get_cam_pose(cam2)
-            R2 = R2_noise.T @ R2
-            t2 = t2 - t2_noise
-        T_cam2_cam1 = np.concatenate([np.concatenate([
-            R1.T @ R2, R1.T @ (t2  - t1)
-            ], axis=1), [[0., 0., 0., 1.]]], axis=0)
-        return T_cam2_cam1
+            T_b1_g_translation = np.eye(4)
+            T_b1_l1 = np.eye(4)
+            T_b2_g_translation = np.eye(4)
+            T_b2_l2 = np.eye(4)
+            
+            T_b1_l1[0:3, 3] = t1_noise.reshape(-1)
+            T_b1_l1[0:3, 0:3] = R1_noise
+            T_b1_g_translation[0:3, 3] = t1.reshape(-1)
+            T_b2_l2[0:3, 3] = t2_noise.reshape(-1)
+            T_b2_l2[0:3, 0:3] = R2_noise
+            T_b2_g_translation[0:3, 3] = t2.reshape(-1)
+            
+            return T_b1_g_translation @ T_b1_l1 @ inv(T_b1_g_translation) @ \
+                T_b2_g_translation @ inv(T_b2_l2) @ inv(T_b2_g_translation)
+        else:
+            return np.eye(4)
