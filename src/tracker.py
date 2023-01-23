@@ -21,8 +21,9 @@ class Tracker():
         self._state = np.concatenate((estimated_state, np.zeros((2,1))), 0)
         self._a = [feature_vec] if not isinstance(feature_vec, list) else feature_vec
         self.include_appearance = False
-        self.recent_detections = []
+        # self.recent_detections = []
         self.rec_det_max_len = PARAM.n_recent_dets
+        self.recent_detections = dict()
 
         self.frames_seen = 1
         self._ell = 0
@@ -64,7 +65,7 @@ class Tracker():
         self._measurement = measurement
         if feature_vec is not None:
             self._a.append(feature_vec)
-        self._add_recent_detection(measurement[0:2,:].reshape(-1,1))
+        # self._add_recent_detection(measurement[0:2,:].reshape(-1,1))
 
     def predict(self):
         xhat = self._state
@@ -148,12 +149,35 @@ class Tracker():
         else:
             self.to_str = f'{self._id}, state: {np.array2string(self._state.T,precision=2)},' + \
                 f' not seen.'
-            self._add_recent_detection(None)
+            # self._add_recent_detection(None)
+        for cam_id, _ in self.u.items():
+            if cam_id not in self.recent_detections:
+                self.recent_detections[cam_id] = np.empty((self.rec_det_max_len, 3)) * np.nan
+        for cam_id, detections in self.recent_detections.items():
+            self.recent_detections[cam_id] = np.roll(self.recent_detections[cam_id], shift=1, axis=0)
+            if cam_id not in self.u:
+                self.recent_detections[cam_id][0, :] = np.empty(3) * np.nan
+            else:
+                # TODO: Assuming H is identity matrix (or 1s along diag)
+                z = PARAM.R @ self.u[cam_id][0:4,:]
+                self.recent_detections[cam_id][0, :] = np.concatenate([z[0:2, :].reshape(-1), [0]])
         self._seen = False
         self._ell += 1
         
     def include_appearance_in_obs(self):
         self.include_appearance = True
+        
+    def get_recent_detection_array(self):
+        ids = []
+        for camera_id in self.recent_detections:
+            ids.append(camera_id)
+        detection_array = None
+        for i in sorted(ids):
+            if detection_array is None:
+                detection_array = np.copy(self.recent_detections[i])
+            else:
+                detection_array = np.concatenate([detection_array, self.recent_detections[i]], axis=1)
+        return detection_array
         
     def _add_recent_detection(self, detection):
         self.recent_detections.insert(0, detection)
