@@ -251,6 +251,73 @@ class Camera():
             return recent_detections
         else: # raw detections
             return self.recent_detection_list
+        
+    def frame_realign(self):
+        def detection_pairs_2_ordered_arrays(detection_list1, detection_list2):
+            ordered_pairs = [np.array([]).reshape(0,3), np.array([]).reshape(0,3)]
+            for track1, track2 in zip(detection_list1, detection_list2):
+                if track1.shape != track2.shape:
+                    continue
+                for i in range(track1.shape[0]):
+                    if np.isnan(track1[i,:]).any() or np.isnan(track2[i,:]).any():
+                        continue
+                    else:
+                        ordered_pairs[0] = np.concatenate([ordered_pairs[0], track1[i,:].reshape(-1,3)], axis=0)
+                        ordered_pairs[1] = np.concatenate([ordered_pairs[1], track2[i,:].reshape(-1,3)], axis=0)
+            return ordered_pairs
+        
+        def calc_T(det1, det2, add_weighting=False):    
+            if add_weighting:
+                mean_pts = (det1 + det2) / 2.0
+                det_dist_from_mean = np.linalg.norm(det1 - mean_pts, axis=1)
+                weight_vals = 1 / (.01 + det_dist_from_mean)
+                weight_vals = weight_vals.reshape((-1,1))
+                det1 * weight_vals
+                np.sum(det1 * weight_vals, axis=0)
+                mean1 = (np.sum(det1 * weight_vals, axis=0) / np.sum(weight_vals)).reshape(-1)
+                mean2 = (np.sum(det2 * weight_vals, axis=0) / np.sum(weight_vals)).reshape(-1)
+                det1_mean_reduced = det1 - mean1
+                det2_mean_reduced = det2 - mean2
+                assert det1_mean_reduced.shape == det2_mean_reduced.shape
+                H = det1_mean_reduced.T @ (det2_mean_reduced * weight_vals)
+                U, s, V = np.linalg.svd(H)
+                R = U @ V.T
+                t = mean1.reshape((3,1)) - R @ mean2.reshape((3,1))
+                T = np.concatenate([np.concatenate([R, t], axis=1), np.array([[0,0,0,1]])], axis=0)
+            else:
+                mean1 = np.mean(det1, axis=0).reshape(-1)
+                mean2 = np.mean(det2, axis=0).reshape(-1)
+                det1_mean_reduced = det1 - mean1
+                det2_mean_reduced = det2 - mean2
+                assert det1_mean_reduced.shape == det2_mean_reduced.shape
+                H = det1_mean_reduced.T @ det2_mean_reduced
+                U, s, V = np.linalg.svd(H)
+                R = U @ V.T
+                t = mean1.reshape((3,1)) - R @ mean2.reshape((3,1))
+                T = np.concatenate([np.concatenate([R, t], axis=1), np.array([[0,0,0,1]])], axis=0)
+            return T
+        
+        local_dets = []
+        for tracker in self.trackers:
+            if self.camera_id in tracker.recent_detections:
+                local_dets.append(tracker.recent_detections[self.camera_id])
+            else:
+                local_dets.append(np.empty((TRACK_PARAM.n_recent_dets, 3)) * np.nan)
+        for cam_id in self.T_other:
+            if cam_id == self.camera_id: continue
+            other_dets = []
+            for tracker in self.trackers:
+                if cam_id in tracker.recent_detections:
+                    other_dets.append(tracker.recent_detections[cam_id])
+                else:
+                    other_dets.append(np.empty((TRACK_PARAM.n_recent_dets, 3)) * np.nan)
+            dets1, dets2 = detection_pairs_2_ordered_arrays(local_dets, other_dets)
+            T_new = calc_T(dets1, dets2)
+            if np.isnan(T_new).any():
+                T_new = np.eye(4)
+            self.T_other[cam_id] = T_new @ self.T_other[cam_id]
+            # print(self.T_other[cam_id])
+            
 
     def _get_tracker_groups(self, similarity_scores):
         # TODO: Maximum clique kind of thing going on here...

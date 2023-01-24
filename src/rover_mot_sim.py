@@ -12,6 +12,7 @@ from metric_evaluator import MetricEvaluator
 from detections import GroundTruth
 from inconsistency_counter import InconsistencyCounter
 import config.rover_mot_params as PARAMS
+import realign_frames
 
 
 def getVideos(root, run, nums=['01', '04', '05', '06', '08'], numCams=4):
@@ -36,11 +37,24 @@ def getMarkerType(cam):
     if cam == 3:
         return cv.MARKER_TRIANGLE_UP
     
-def give_cam_correct_transforms(cam, detector, numCams=4):
+def give_cam_transform(cam, detector, numCams=4, incl_noise=False):
     for i in range(numCams):
         if i == cam.camera_id:
             continue
-        cam.T_other[i] = detector.get_T_obj2_obj1(cam.camera_id, i, incl_noise=True)
+        cam.T_other[i] = detector.get_T_obj2_obj1(cam.camera_id, i, incl_noise=incl_noise)
+        
+def perform_frame_realignment(agents):
+    # print('\n\n\nHAPPENING NOW!!!\n\n\n')
+    for i, a1 in enumerate(agents):
+        d1 = realign_frames.detections2pointcloud(a1.get_recent_detections(), org_by_tracks=False)
+        for j, a2 in enumerate(agents):
+            if i == j: continue
+            d2 = realign_frames.detections2pointcloud(a2.get_recent_detections(), org_by_tracks=False)
+            if j in a1.T_other:
+                a1.T_other[j] = realign_frames.realign_frames(d1, d2, initial_guess=a1.T_other[j])
+            else:
+                a1.T_other[j] = realign_frames.realign_frames(d1, d2)
+            
         
 def get_avg_metric(metric, mes, divide_by_frames=False):
     num_cams=len(mes)
@@ -114,6 +128,10 @@ if __name__ == '__main__':
     parser.add_argument('--init-transform',
             action='store_true',
             help='Cameras know the transformations between each other')
+    parser.add_argument('--num-frame-fixes',
+            type=int,
+            default=1,
+            help='Number of attempts to make to improve frame alignment')
     args = parser.parse_args()
 
     root = pathlib.Path(args.root)
@@ -121,6 +139,8 @@ if __name__ == '__main__':
         bagfile = 'run01_filtered.bag'
         num_peds = 3
         FIRST_FRAME = 300
+        # FIRST_FRAME = 30*70
+        START_METRIC_FRAME = 30*90
         LAST_FRAME = 5640
     elif args.run == 3:
         bagfile = 'run03_filtered.bag'
@@ -139,8 +159,7 @@ if __name__ == '__main__':
         T_cam = detector.get_cam_T(i)
         agents.append(Camera(i, Tau_LDA=PARAMS.TAU_LDA, Tau_GDA=PARAMS.TAU_GDA, kappa=PARAMS.KAPPA,
                              alpha=PARAMS.ALPHA, n_meas_init=PARAMS.N_MEAS_TO_INIT_TRACKER, T=T_cam))
-        if args.init_transform:
-            give_cam_correct_transforms(agents[i], detector, numCams=numCams)
+        give_cam_transform(agents[i], detector, numCams=numCams, incl_noise=args.init_transform)
         _, t_cam, R_noise, T_noise = detector.get_cam_pose(i)
         R_noise, T_noise = R_noise[0:2, 0:2], T_noise[0:2, :]
         mes.append(MetricEvaluator(t_cam=t_cam[0:2,0:1], noise_rot=R_noise, noise_tran=T_noise))
@@ -164,6 +183,19 @@ if __name__ == '__main__':
         frame_range = tqdm(range(FIRST_FRAME, LAST_FRAME))
     for framenum in frame_range:
         frame_time = framenum / 30 + detector.start_time
+        
+        if args.num_frame_fixes == 1:
+            if framenum == 90*30:
+                # print('\n\n\nperforming frame alignment!\n\n\n')
+                for a in agents: a.frame_realign()
+                # perform_frame_realignment(agents)
+        elif args.num_frame_fixes != 0:
+            if framenum == 60*30 or framenum == 75*30 or framenum == 90*30 or framenum == 105*30 or framenum == 130*30 or framenum == 145*30 or framenum == 160*30:
+            # if framenum == 30*30 or framenum == 50*30 or framenum == 70*30 or framenum == 90*30 or framenum == 110*30 or framenum == 130*30 or framenum == 150*30:
+                # perform_frame_realignment(agents)
+                # print('\n\n\nperforming frame alignment!\n\n\n')
+                for a in agents: a.frame_realign()
+                
         if not detector.times_different(frame_time, last_frame_time) and abs(frame_time - last_frame_time) < TRIGGER_AUTO_CYCLE_TIME:
             for cap in caps:
                 cap.read()
@@ -245,7 +277,7 @@ if __name__ == '__main__':
                     pt = (int(ped_pos[0]*topview_size/20 + topview_size/2), int(ped_pos[1]*topview_size/20 + topview_size/2))
                     cv.drawMarker(combined, pt, getTrackColor(int(ped_id)), getMarkerType(i), thickness=2, markerSize=30)
             
-            if framenum > 1:    
+            if framenum > START_METRIC_FRAME:    
                 for a, me in zip(agents, mes):
                     me.update(gt_dict, a.get_trackers(format='dict'))
                 if args.metric_frequency != 0 and frame_time - last_printed_metrics > 1 / args.metric_frequency:
