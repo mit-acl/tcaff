@@ -29,8 +29,16 @@ class Tracker():
         self._ell = 0
         self._seen = False
         self.seen_by_this_camera = False
-        self.color = (np.random.randint(0,255), np.random.randint(0,255), np.random.randint(0,255))
+        # self.color = (np.random.randint(0,255), np.random.randint(0,255), np.random.randint(0,255))
         self.to_str = ''
+        if camera_id == 0:
+            self.color = (np.random.randint(100,255), 0, 0)
+        elif camera_id == 1:
+            self.color = (0, np.random.randint(100,255), 0)
+        elif camera_id == 2:
+            self.color = (0, 0, np.random.randint(100,255))
+        elif camera_id == 3:
+            self.color = (np.random.randint(100,255), 0, np.random.randint(100,255))
 
         self.predict()
 
@@ -150,17 +158,18 @@ class Tracker():
             self.to_str = f'{self._id}, state: {np.array2string(self._state.T,precision=2)},' + \
                 f' not seen.'
             # self._add_recent_detection(None)
-        for cam_id, _ in self.u.items():
+        for cam_id in self.u:
             if cam_id not in self.recent_detections:
-                self.recent_detections[cam_id] = np.empty((self.rec_det_max_len, 3)) * np.nan
-        for cam_id, detections in self.recent_detections.items():
+                self.recent_detections[cam_id] = np.empty((self.rec_det_max_len, 4)) * np.nan
+        for cam_id in self.recent_detections:
             self.recent_detections[cam_id] = np.roll(self.recent_detections[cam_id], shift=1, axis=0)
             if cam_id not in self.u:
-                self.recent_detections[cam_id][0, :] = np.empty(3) * np.nan
+                self.recent_detections[cam_id][0, :] = np.empty(4) * np.nan
             else:
                 # TODO: Assuming H is identity matrix (or 1s along diag)
                 z = PARAM.R @ self.u[cam_id][0:4,:]
-                self.recent_detections[cam_id][0, :] = np.concatenate([z[0:2, :].reshape(-1), [0]])
+                self.recent_detections[cam_id][0, 0:3] = np.concatenate([z[0:2, :].reshape(-1), [0]])
+                self.recent_detections[cam_id][0, 3] = np.linalg.norm(self._state[0:2,:] - z[0:2,:])
         self._seen = False
         self._ell += 1
         

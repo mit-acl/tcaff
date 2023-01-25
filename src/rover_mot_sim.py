@@ -146,6 +146,7 @@ if __name__ == '__main__':
         bagfile = 'run03_filtered.bag'
         num_peds = 5
         FIRST_FRAME = 600
+        START_METRIC_FRAME = FIRST_FRAME #30*90
         LAST_FRAME = 7500
     bagfile = str(root / bagfile)
     GT = GroundTruth(bagfile, [f'{i+1}' for i in range(num_peds)], 'RR01')
@@ -190,7 +191,8 @@ if __name__ == '__main__':
                 for a in agents: a.frame_realign()
                 # perform_frame_realignment(agents)
         elif args.num_frame_fixes != 0:
-            if framenum == 60*30 or framenum == 75*30 or framenum == 90*30 or framenum == 105*30 or framenum == 130*30 or framenum == 145*30 or framenum == 160*30:
+            if framenum > (FIRST_FRAME + 15*30) and (framenum - FIRST_FRAME) % (15*30) == 0:
+            # if framenum == 60*30 or framenum == 75*30 or framenum == 90*30 or framenum == 105*30 or framenum == 130*30 or framenum == 145*30 or framenum == 160*30:
             # if framenum == 30*30 or framenum == 50*30 or framenum == 70*30 or framenum == 90*30 or framenum == 110*30 or framenum == 130*30 or framenum == 150*30:
                 # perform_frame_realignment(agents)
                 # print('\n\n\nperforming frame alignment!\n\n\n')

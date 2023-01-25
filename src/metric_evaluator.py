@@ -4,7 +4,7 @@ from copy import deepcopy
 
 class MetricEvaluator():
 
-    def __init__(self, t_cam, max_d=.5, noise_rot=np.eye(2), noise_tran=np.zeros((2,1))):
+    def __init__(self, t_cam, max_d=.75, noise_rot=np.eye(2), noise_tran=np.zeros((2,1))):
         self.max_d = max_d
         self.t_cam = t_cam
         self.R_noise = noise_rot
