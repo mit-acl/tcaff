@@ -160,11 +160,11 @@ class Tracker():
             # self._add_recent_detection(None)
         for cam_id in self.u:
             if cam_id not in self.recent_detections:
-                self.recent_detections[cam_id] = np.empty((self.rec_det_max_len, 4)) * np.nan
+                self.recent_detections[cam_id] = np.zeros((self.rec_det_max_len, 4)) * np.nan
         for cam_id in self.recent_detections:
             self.recent_detections[cam_id] = np.roll(self.recent_detections[cam_id], shift=1, axis=0)
             if cam_id not in self.u:
-                self.recent_detections[cam_id][0, :] = np.empty(4) * np.nan
+                self.recent_detections[cam_id][0, :] = np.zeros(4) * np.nan
             else:
                 # TODO: Assuming H is identity matrix (or 1s along diag)
                 z = PARAM.R @ self.u[cam_id][0:4,:]

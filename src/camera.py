@@ -1,10 +1,12 @@
 import numpy as np
 from numpy.linalg import norm as norm
 from scipy.optimize import linear_sum_assignment
+from scipy.spatial.transform import Rotation as Rot
 from copy import deepcopy
 
 from tracker import Tracker
 import config.tracker_params as TRACK_PARAM
+import config.rover_mot_params as PARAM
 
 class Camera():
 
@@ -12,6 +14,7 @@ class Camera():
         # TODO: Tune for Tau
         self.Tau_LDA = Tau_LDA
         self.Tau_GDA = Tau_GDA
+        self.Tau_grown = 0
         self.alpha = alpha
         self.kappa = kappa
         self.trackers = []
@@ -266,6 +269,13 @@ class Camera():
                         ordered_pairs[1] = np.concatenate([ordered_pairs[1], track2[i,:].reshape(-1,4)], axis=0)
             return ordered_pairs
         
+        def T_mag(T):
+            R = Rot.from_matrix(T[0:3, 0:3])
+            t = T[0:3, 3]
+            rot_mag = R.as_euler('xyz', degrees=True)[2] / PARAM.DEG_2_M
+            t_mag = np.linalg.norm(t)
+            return np.abs(rot_mag) + np.abs(t_mag)
+        
         def calc_T(det1, det2, add_weighting=True):    
             if False:
                 mean_pts = (det1 + det2) / 2.0
@@ -311,12 +321,12 @@ class Camera():
             return T
         
         local_dets = []
-        MIN_LEN_FOR_ALIGNMENT = 80
         for tracker in self.trackers:
             if self.camera_id in tracker.recent_detections:
                 local_dets.append(tracker.recent_detections[self.camera_id])
             else:
-                local_dets.append(np.empty((TRACK_PARAM.n_recent_dets, 3)) * np.nan)
+                local_dets.append(np.zeros((TRACK_PARAM.n_recent_dets, 3)) * np.nan)
+        T_mags = []
         for cam_id in self.T_other:
             if cam_id == self.camera_id: continue
             other_dets = []
@@ -324,15 +334,26 @@ class Camera():
                 if cam_id in tracker.recent_detections:
                     other_dets.append(tracker.recent_detections[cam_id])
                 else:
-                    other_dets.append(np.empty((TRACK_PARAM.n_recent_dets, 3)) * np.nan)
+                    other_dets.append(np.zeros((TRACK_PARAM.n_recent_dets, 3)) * np.nan)
             dets1, dets2 = detection_pairs_2_ordered_arrays(local_dets, other_dets)
-            if dets1.shape[0] < MIN_LEN_FOR_ALIGNMENT:
+            if dets1.shape[0] < PARAM.MIN_DET_ALIGNMENT_LEN:
                 T_new = np.eye(4)
             else:
                 T_new = calc_T(dets1, dets2)
             if np.isnan(T_new).any():
                 T_new = np.eye(4)
             self.T_other[cam_id] = T_new @ self.T_other[cam_id]
+            T_mags.append(T_mag(T_new))
+        # print(T_mags)
+        if any(i >= PARAM.TAU_GROWTH_MIN_TMAG for i in T_mags) or \
+            (len(self.trackers) > PARAM.TAU_GROWTH_MIN_TRACKERS and all(i == 0.0 for i in T_mags)):
+            self.Tau_LDA *= PARAM.TAU_LDA_GROWTH_FACTOR
+            self.Tau_GDA *= PARAM.TAU_GDA_GROWTH_FACTOR
+            self.Tau_grown += 1
+        elif self.Tau_grown > 1:
+            self.Tau_LDA /= PARAM.TAU_LDA_GROWTH_FACTOR
+            self.Tau_GDA /= PARAM.TAU_GDA_GROWTH_FACTOR
+            self.Tau_grown -= 1
             # print(self.T_other[cam_id])
             
 
