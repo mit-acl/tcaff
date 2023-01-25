@@ -1,9 +1,10 @@
 import numpy as np
 from numpy.linalg import inv
-from observation_msg import ObservationMsg
 from copy import deepcopy
 
-import config.tracker_params as PARAM
+from .observation_msg import ObservationMsg
+from config import tracker_params as PARAM
+
 class Tracker():
 
     def __init__(self, camera_id, tracker_id, estimated_state, feature_vec): #, Ts=1):

@@ -6,13 +6,13 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
-from person_detector import PersonDetector
-from camera import Camera
-from metric_evaluator import MetricEvaluator
-from detections import GroundTruth
-from inconsistency_counter import InconsistencyCounter
+from frontend.person_detector import PersonDetector
+from frontend.detections import GroundTruth
+from mot.camera import Camera
+from metrics.metric_evaluator import MetricEvaluator
+from metrics.inconsistency_counter import InconsistencyCounter
 import config.rover_mot_params as PARAMS
-import realign_frames
+import realign.realign_frames as realign_frames
 
 
 def getVideos(root, run, nums=['01', '04', '05', '06', '08'], numCams=4):

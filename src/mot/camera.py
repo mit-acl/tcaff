@@ -4,9 +4,9 @@ from scipy.optimize import linear_sum_assignment
 from scipy.spatial.transform import Rotation as Rot
 from copy import deepcopy
 
-from tracker import Tracker
-import config.tracker_params as TRACK_PARAM
-import config.rover_mot_params as PARAM
+from .tracker import Tracker
+from config import tracker_params as TRACK_PARAM
+from config import rover_mot_params as PARAM
 
 class Camera():
 
