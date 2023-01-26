@@ -14,7 +14,7 @@ class Camera():
         # TODO: Tune for Tau
         self.Tau_LDA = Tau_LDA
         self.Tau_GDA = Tau_GDA
-        self.Tau_grown = 0
+        self.Tau_grown = 1
         self.alpha = alpha
         self.kappa = kappa
         self.trackers = []
@@ -344,16 +344,15 @@ class Camera():
                 T_new = np.eye(4)
             self.T_other[cam_id] = T_new @ self.T_other[cam_id]
             T_mags.append(T_mag(T_new))
-        # print(T_mags)
-        if any(i >= PARAM.TAU_GROWTH_MIN_TMAG for i in T_mags) or \
-            (len(self.trackers) > PARAM.TAU_GROWTH_MIN_TRACKERS and all(i == 0.0 for i in T_mags)):
-            self.Tau_LDA *= PARAM.TAU_LDA_GROWTH_FACTOR
-            self.Tau_GDA *= PARAM.TAU_GDA_GROWTH_FACTOR
-            self.Tau_grown += 1
-        elif self.Tau_grown > 1:
-            self.Tau_LDA /= PARAM.TAU_LDA_GROWTH_FACTOR
-            self.Tau_GDA /= PARAM.TAU_GDA_GROWTH_FACTOR
-            self.Tau_grown -= 1
+        if len(self.trackers) > PARAM.TAU_GROWTH_MIN_TRACKERS and all(i == 0.0 for i in T_mags):
+            self.Tau_grown *= PARAM.TAU_LDA_GROWTH_FACTOR
+            self.Tau_LDA = PARAM.TAU_LDA * self.Tau_grown
+        else:
+            T_mags.append(.01) # prevent divide by zero warning
+            scaling = PARAM.TAU_LDA_GROWTH_FACTOR ** (np.log2(max(T_mags) / PARAM.TAU_GROWTH_MIN_TMAG))
+            self.Tau_grown = max(1, self.Tau_grown * scaling)
+            self.Tau_LDA = PARAM.TAU_LDA * self.Tau_grown
+        # print(T_mags + [self.Tau_grown])
             # print(self.T_other[cam_id])
             
 
