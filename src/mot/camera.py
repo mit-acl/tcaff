@@ -7,10 +7,19 @@ from copy import deepcopy
 from .tracker import Tracker
 from config import tracker_params as TRACK_PARAM
 from config import rover_mot_params as PARAM
+from realign.frame_realigner import FrameRealigner
 
 class Camera():
 
-    def __init__(self, camera_id, Tau_LDA, Tau_GDA, alpha, kappa, T, n_meas_init=2):
+    def __init__(self, camera_id, connected_cams, Tau_LDA, Tau_GDA, alpha, kappa, T, n_meas_init=2):
+        self.realigner = FrameRealigner(
+            cam_id=camera_id,
+            connected_cams=connected_cams,
+            detections_min_num=PARAM.MIN_DET_ALIGNMENT_LEN, 
+            tolerance_growth_rate=PARAM.TAU_LDA_GROWTH_FACTOR,
+            transform_mag_unity_tolerance=PARAM.TAU_GROWTH_MIN_TMAG,
+            deg2m=PARAM.DEG_2_M    
+        )
         # TODO: Tune for Tau
         self.Tau_LDA = Tau_LDA
         self.Tau_GDA = Tau_GDA
@@ -27,7 +36,6 @@ class Camera():
         self.inconsistencies = 0
         self.groups_by_id = []
         self.T_local_global = T
-        self.T_other = dict()
         self.recent_detection_list = []
         for i in range(50):
             self.recent_detection_list.append(None)
@@ -256,105 +264,8 @@ class Camera():
             return self.recent_detection_list
         
     def frame_realign(self):
-        def detection_pairs_2_ordered_arrays(detection_list1, detection_list2):
-            ordered_pairs = [np.array([]).reshape(0,4), np.array([]).reshape(0,4)]
-            for track1, track2 in zip(detection_list1, detection_list2):
-                if track1.shape != track2.shape:
-                    continue
-                for i in range(track1.shape[0]):
-                    if np.isnan(track1[i,:]).any() or np.isnan(track2[i,:]).any():
-                        continue
-                    else:
-                        ordered_pairs[0] = np.concatenate([ordered_pairs[0], track1[i,:].reshape(-1,4)], axis=0)
-                        ordered_pairs[1] = np.concatenate([ordered_pairs[1], track2[i,:].reshape(-1,4)], axis=0)
-            return ordered_pairs
-        
-        def T_mag(T):
-            R = Rot.from_matrix(T[0:3, 0:3])
-            t = T[0:3, 3]
-            rot_mag = R.as_euler('xyz', degrees=True)[2] / PARAM.DEG_2_M
-            t_mag = np.linalg.norm(t)
-            return np.abs(rot_mag) + np.abs(t_mag)
-        
-        def calc_T(det1, det2, add_weighting=True):    
-            if False:
-                mean_pts = (det1 + det2) / 2.0
-                det_dist_from_mean = np.linalg.norm(det1 - mean_pts, axis=1)
-                weight_vals = 1 / (.01 + det_dist_from_mean)
-                weight_vals = weight_vals.reshape((-1,1))
-                mean1 = (np.sum(det1 * weight_vals, axis=0) / np.sum(weight_vals)).reshape(-1)
-                mean2 = (np.sum(det2 * weight_vals, axis=0) / np.sum(weight_vals)).reshape(-1)
-                det1_mean_reduced = det1 - mean1
-                det2_mean_reduced = det2 - mean2
-                assert det1_mean_reduced.shape == det2_mean_reduced.shape
-                H = det1_mean_reduced.T @ (det2_mean_reduced * weight_vals)
-                U, s, V = np.linalg.svd(H)
-                R = U @ V.T
-                t = mean1.reshape((3,1)) - R @ mean2.reshape((3,1))
-                T = np.concatenate([np.concatenate([R, t], axis=1), np.array([[0,0,0,1]])], axis=0)
-            if add_weighting:
-                weight_vals = 1 / (1e-6 + det1[:,3] * det2[:,3])
-                weight_vals = weight_vals.reshape((-1,1))
-                det1 = det1[:, 0:3]
-                det2 = det2[:, 0:3]
-                mean1 = (np.sum(det1 * weight_vals, axis=0) / np.sum(weight_vals)).reshape(-1)
-                mean2 = (np.sum(det2 * weight_vals, axis=0) / np.sum(weight_vals)).reshape(-1)
-                det1_mean_reduced = det1 - mean1
-                det2_mean_reduced = det2 - mean2
-                assert det1_mean_reduced.shape == det2_mean_reduced.shape
-                H = det1_mean_reduced.T @ (det2_mean_reduced * weight_vals)
-                U, s, V = np.linalg.svd(H)
-                R = U @ V.T
-                t = mean1.reshape((3,1)) - R @ mean2.reshape((3,1))
-                T = np.concatenate([np.concatenate([R, t], axis=1), np.array([[0,0,0,1]])], axis=0)
-            else:
-                mean1 = np.mean(det1, axis=0).reshape(-1)
-                mean2 = np.mean(det2, axis=0).reshape(-1)
-                det1_mean_reduced = det1 - mean1
-                det2_mean_reduced = det2 - mean2
-                assert det1_mean_reduced.shape == det2_mean_reduced.shape
-                H = det1_mean_reduced.T @ det2_mean_reduced
-                U, s, V = np.linalg.svd(H)
-                R = U @ V.T
-                t = mean1.reshape((3,1)) - R @ mean2.reshape((3,1))
-                T = np.concatenate([np.concatenate([R, t], axis=1), np.array([[0,0,0,1]])], axis=0)
-            return T
-        
-        local_dets = []
-        for tracker in self.trackers:
-            if self.camera_id in tracker.recent_detections:
-                local_dets.append(tracker.recent_detections[self.camera_id])
-            else:
-                local_dets.append(np.zeros((TRACK_PARAM.n_recent_dets, 3)) * np.nan)
-        T_mags = []
-        for cam_id in self.T_other:
-            if cam_id == self.camera_id: continue
-            other_dets = []
-            for tracker in self.trackers:
-                if cam_id in tracker.recent_detections:
-                    other_dets.append(tracker.recent_detections[cam_id])
-                else:
-                    other_dets.append(np.zeros((TRACK_PARAM.n_recent_dets, 3)) * np.nan)
-            dets1, dets2 = detection_pairs_2_ordered_arrays(local_dets, other_dets)
-            if dets1.shape[0] < PARAM.MIN_DET_ALIGNMENT_LEN:
-                T_new = np.eye(4)
-            else:
-                T_new = calc_T(dets1, dets2)
-            if np.isnan(T_new).any():
-                T_new = np.eye(4)
-            self.T_other[cam_id] = T_new @ self.T_other[cam_id]
-            T_mags.append(T_mag(T_new))
-        if len(self.trackers) > PARAM.TAU_GROWTH_MIN_TRACKERS and all(i == 0.0 for i in T_mags):
-            self.Tau_grown *= PARAM.TAU_LDA_GROWTH_FACTOR
-            self.Tau_LDA = PARAM.TAU_LDA * self.Tau_grown
-        else:
-            T_mags.append(.01) # prevent divide by zero warning
-            scaling = PARAM.TAU_LDA_GROWTH_FACTOR ** (np.log2(max(T_mags) / PARAM.TAU_GROWTH_MIN_TMAG))
-            self.Tau_grown = max(1, self.Tau_grown * scaling)
-            self.Tau_LDA = PARAM.TAU_LDA * self.Tau_grown
-        # print(T_mags + [self.Tau_grown])
-            # print(self.T_other[cam_id])
-            
+        self.realigner.realign(self.trackers)
+        self.Tau_LDA = self.realigner.tolerance_scale * PARAM.TAU_LDA
 
     def _get_tracker_groups(self, similarity_scores):
         # TODO: Maximum clique kind of thing going on here...
@@ -494,7 +405,7 @@ class Camera():
     def _transform_obs(self, obs):
         # TODO: Right now I am assuming H and R are the same in each tracker!
         obs_cam = obs.tracker_id[0]
-        if obs_cam not in self.T_other:
+        if obs_cam not in self.realigner.transforms:
             return obs
         if obs_cam == self.camera_id:
             return obs
@@ -504,14 +415,14 @@ class Camera():
         if obs.u is not None:
             z = TRACK_PARAM.R @ obs.u[0:4,:]
             p_meas = np.concatenate([z[0:2,:], [[0.], [1.]]], axis=0)
-            p_meas_corrected = (self.T_other[obs_cam] @ p_meas)[0:2,:]
+            p_meas_corrected = (self.realigner.transforms[obs_cam] @ p_meas)[0:2,:]
             obs.u = TRACK_PARAM.H.T @ np.linalg.inv(TRACK_PARAM.R) @ np.concatenate([p_meas_corrected, z[2:]], axis=0)
             
         # Extract xbar and correct
         pos = np.concatenate([obs.xbar[0:2,:], [[0], [1]]], axis=0)
         vel = np.concatenate([obs.xbar[4:6,:], [[0]]], axis=0)
-        pos_corrected = self.T_other[obs_cam] @ pos
-        vel_corrected = self.T_other[obs_cam][0:3, 0:3] @ vel
+        pos_corrected = self.realigner.transforms[obs_cam] @ pos
+        vel_corrected = self.realigner.transforms[obs_cam][0:3, 0:3] @ vel
         obs.xbar[0:2,:] = pos_corrected[0:2,:]
         obs.xbar[4:6,:] = vel_corrected[0:2,:]
         return obs

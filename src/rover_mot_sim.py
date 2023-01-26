@@ -26,11 +26,11 @@ def get_track_color(i):
     c = (c * 255).astype(int)
     return tuple(v.item() for v in c[::-1])
     
-def give_cam_transform(cam, detector, num_cams=4, incl_noise=False):
-    for i in range(num_cams):
-        if i == cam.camera_id:
-            continue
-        cam.T_other[i] = detector.get_T_obj2_obj1(cam.camera_id, i, incl_noise=incl_noise)            
+# def give_cam_transform(cam, detector, num_cams=4, incl_noise=False):
+#     for i in range(num_cams):
+#         if i == cam.camera_id:
+#             continue
+#         cam.T_other[i] = detector.get_T_obj2_obj1(cam.camera_id, i, incl_noise=incl_noise)            
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Annotate video sequence with ground truth')
@@ -99,9 +99,11 @@ if __name__ == '__main__':
     detector = PersonDetector(run=args.run, sigma_r=args.std_dev_rotation*np.pi/180, sigma_t=args.std_dev_translation, num_cams=num_cams)
     for i in range(num_cams):
         T_cam = detector.get_cam_T(i)
-        robots.append(Camera(i, Tau_LDA=PARAMS.TAU_LDA, Tau_GDA=PARAMS.TAU_GDA, kappa=PARAMS.KAPPA,
+        connected_cams = [*range(num_cams)]; connected_cams.remove(i)
+        robots.append(Camera(i, connected_cams=connected_cams, Tau_LDA=PARAMS.TAU_LDA, 
+                             Tau_GDA=PARAMS.TAU_GDA, kappa=PARAMS.KAPPA,
                              alpha=PARAMS.ALPHA, n_meas_init=PARAMS.N_MEAS_TO_INIT_TRACKER, T=T_cam))
-        give_cam_transform(robots[i], detector, num_cams=num_cams, incl_noise=args.init_transform)
+        # give_cam_transform(robots[i], detector, num_cams=num_cams, incl_noise=args.init_transform)
         _, t_cam, R_noise, T_noise = detector.get_cam_pose(i)
         R_noise, T_noise = R_noise[0:2, 0:2], T_noise[0:2, :]
         mes.append(MetricEvaluator(t_cam=t_cam[0:2,0:1], noise_rot=R_noise, noise_tran=T_noise))
