@@ -82,3 +82,36 @@ class MetricEvaluator():
         # if out_matrix == None:
         #     out_matrix = np.array([[]])
         return out_list, out_matrix
+    
+def get_avg_metric(metric, mes, divide_by_frames=False):
+    num_cams=len(mes)
+    m_avg = 0
+    for me in mes:
+        if divide_by_frames:
+            m_val = me.get_metric(metric) / (me.get_metric('num_frames') * num_cams)
+        else:
+            m_val = me.get_metric(metric) / num_cams
+        m_avg += m_val
+    return m_avg
+
+def print_metric_results(mes, inconsistencies, agents):
+    mota = get_avg_metric('mota', mes)
+    motp = get_avg_metric('motp', mes)
+    fp = get_avg_metric('num_false_positives', mes, divide_by_frames=True)
+    fn = get_avg_metric('num_misses', mes, divide_by_frames=True)
+    switch = get_avg_metric('num_switches', mes, divide_by_frames=True)
+    precision = get_avg_metric('precision', mes)
+    recall = get_avg_metric('recall', mes)
+    total_num_tracks = sum([len(a.tracker_mapping) / len(agents) for a in agents]) / len(agents)
+    incon_per_track = inconsistencies / total_num_tracks if total_num_tracks else 0.0
+
+    print(f'mota: {mota}')
+    print(f'motp: {motp}')
+    print(f'fp: {fp}')
+    print(f'fn: {fn}')
+    print(f'switch: {switch}')
+    print(f'inconsistencies: {inconsistencies}')
+    print(f'precision: {precision}')
+    print(f'recall: {recall}')
+    print(f'num_tracks: {total_num_tracks}')
+    print(f'incon_per_track: {incon_per_track}')
