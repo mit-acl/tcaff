@@ -1,3 +1,4 @@
+import pickle # delete
 import argparse
 import pathlib
 
@@ -8,7 +9,7 @@ from tqdm import tqdm
 
 from frontend.person_detector import PersonDetector
 from frontend.detections import GroundTruth
-from mot.camera import Camera
+from mot.multi_object_tracker import MultiObjectTracker
 from metrics.metric_evaluator import MetricEvaluator, print_metric_results
 from metrics.inconsistency_counter import InconsistencyCounter
 import config.rover_mot_params as PARAMS
@@ -87,8 +88,8 @@ if __name__ == '__main__':
         bagfile = 'run03_filtered.bag'
         num_peds = 5
         FIRST_FRAME = 600
-        START_METRIC_FRAME = FIRST_FRAME
         LAST_FRAME = 7500
+        START_METRIC_FRAME = (LAST_FRAME - FIRST_FRAME) / 2
     bagfile = str(root / bagfile)
     GT = GroundTruth(bagfile, [f'{i+1}' for i in range(num_peds)], 'RR01')
 
@@ -100,7 +101,7 @@ if __name__ == '__main__':
     for i in range(num_cams):
         T_cam = detector.get_cam_T(i)
         connected_cams = [*range(num_cams)]; connected_cams.remove(i)
-        robots.append(Camera(i, connected_cams=connected_cams, Tau_LDA=PARAMS.TAU_LDA, 
+        robots.append(MultiObjectTracker(i, connected_cams=connected_cams, Tau_LDA=PARAMS.TAU_LDA, 
                              Tau_GDA=PARAMS.TAU_GDA, kappa=PARAMS.KAPPA,
                              alpha=PARAMS.ALPHA, n_meas_init=PARAMS.N_MEAS_TO_INIT_TRACKER, T=T_cam))
         # give_cam_transform(robots[i], detector, num_cams=num_cams, incl_noise=args.init_transform)
@@ -131,6 +132,17 @@ if __name__ == '__main__':
         
         # Frame Realignment
         if args.realign and framenum > (FIRST_FRAME + 15*30) and (framenum - FIRST_FRAME) % (15*30) == 0:
+            # with open('robot_data.pkl', 'wb') as outp:
+            #     pickle.dump(robots, outp, pickle.HIGHEST_PROTOCOL)
+            #     Ts = dict()
+            #     for i in range(num_cams):
+            #         Ts[i] = dict()
+            #         for j in range(num_cams):
+            #             if i == j:
+            #                 continue
+            #             Ts[i][j] = detector.get_T_obj2_obj1(i, j, incl_noise=True)   
+            #     pickle.dump(Ts, outp, pickle.HIGHEST_PROTOCOL)
+            #     exit(0)
             for rob in robots: rob.frame_realign()
             
         # Continues to next frame when robots have new detections

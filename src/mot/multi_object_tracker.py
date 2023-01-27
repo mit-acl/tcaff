@@ -9,7 +9,7 @@ from config import tracker_params as TRACK_PARAM
 from config import rover_mot_params as PARAM
 from realign.frame_realigner import FrameRealigner
 
-class Camera():
+class MultiObjectTracker():
 
     def __init__(self, camera_id, connected_cams, Tau_LDA, Tau_GDA, alpha, kappa, T, n_meas_init=2):
         self.realigner = FrameRealigner(
