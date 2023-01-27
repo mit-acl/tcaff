@@ -18,28 +18,15 @@ class FrameRealigner():
         self.tolerance_scale = 1
     
     def realign(self, trackers):
-        local_dets = []
-        for tracker in trackers:
-            if self.cam_id in tracker.recent_detections:
-                local_dets.append(tracker.recent_detections[self.cam_id])
-            else:
-                local_dets.append(np.zeros((TRACK_PARAM.n_recent_dets, 3)) * np.nan)
+        local_dets = self._get_camera_detections(self.cam_id, trackers)
         T_mags = []
+        T_news = dict()
         for cam_id in self.transforms:
             if cam_id == self.cam_id: continue
-            other_dets = []
-            for tracker in trackers:
-                if cam_id in tracker.recent_detections:
-                    other_dets.append(tracker.recent_detections[cam_id])
-                else:
-                    other_dets.append(np.zeros((TRACK_PARAM.n_recent_dets, 3)) * np.nan)
+            other_dets = self._get_camera_detections(cam_id, trackers)
             dets1, dets2 = self.detection_pairs_2_ordered_arrays(local_dets, other_dets)
-            if dets1.shape[0] < self.detections_min_num:
-                T_new = np.eye(4)
-            else:
-                T_new = self.calc_T(dets1, dets2)
-            if np.isnan(T_new).any():
-                T_new = np.eye(4)
+            T_new = self.calc_T(dets1, dets2)
+            
             self.transforms[cam_id] = T_new @ self.transforms[cam_id]
             T_mags.append(self.T_mag(T_new))
         # TODO: Magic number here, we should have a better way to recognize a need for frame realignment
@@ -52,6 +39,15 @@ class FrameRealigner():
             scaling = self.tol_growth_rate ** (np.log2(max(T_mags) / self.T_mag_unity_tol))
             self.tolerance_scale = max(1, self.tolerance_scale * scaling)
         # print(T_mags + [self.tolerance_scale])
+    
+    def _get_camera_detections(self, cam_num, trackers):
+        dets = []
+        for tracker in trackers:
+            if cam_num in tracker.recent_detections:
+                dets.append(tracker.recent_detections[cam_num])
+            else:
+                dets.append(np.zeros((TRACK_PARAM.n_recent_dets, 3)) * np.nan)
+        return dets
     
     def detection_pairs_2_ordered_arrays(self, detection_list1, detection_list2):
         ordered_pairs = [np.array([]).reshape(0,4), np.array([]).reshape(0,4)]
@@ -74,6 +70,9 @@ class FrameRealigner():
         return np.abs(rot_mag) + np.abs(t_mag)
     
     def calc_T(self, det1, det2, add_weighting=True):    
+        if det1.shape[0] < self.detections_min_num or \
+            det2.shape[0 < self.detections_min_num]:
+            return np.eye(4)
         if False:
             mean_pts = (det1 + det2) / 2.0
             det_dist_from_mean = np.linalg.norm(det1 - mean_pts, axis=1)
@@ -115,6 +114,8 @@ class FrameRealigner():
             R = U @ V.T
             t = mean1.reshape((3,1)) - R @ mean2.reshape((3,1))
             T = np.concatenate([np.concatenate([R, t], axis=1), np.array([[0,0,0,1]])], axis=0)
+        if np.isnan(T).any():
+            T = np.eye(4)
         return T
     
     
