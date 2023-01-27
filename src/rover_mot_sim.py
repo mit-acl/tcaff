@@ -101,9 +101,7 @@ if __name__ == '__main__':
     for i in range(num_cams):
         T_cam = detector.get_cam_T(i)
         connected_cams = [*range(num_cams)]; connected_cams.remove(i)
-        robots.append(MultiObjectTracker(i, connected_cams=connected_cams, Tau_LDA=PARAMS.TAU_LDA, 
-                             Tau_GDA=PARAMS.TAU_GDA, kappa=PARAMS.KAPPA,
-                             alpha=PARAMS.ALPHA, n_meas_init=PARAMS.N_MEAS_TO_INIT_TRACKER, T=T_cam))
+        robots.append(MultiObjectTracker(i, connected_cams=connected_cams, params=PARAMS, T=T_cam))
         # give_cam_transform(robots[i], detector, num_cams=num_cams, incl_noise=args.init_transform)
         _, t_cam, R_noise, T_noise = detector.get_cam_pose(i)
         R_noise, T_noise = R_noise[0:2, 0:2], T_noise[0:2, :]
@@ -131,7 +129,7 @@ if __name__ == '__main__':
         frame_time = framenum / 30 + detector.start_time
         
         # Frame Realignment
-        if args.realign and framenum > (FIRST_FRAME + 15*30) and (framenum - FIRST_FRAME) % (15*30) == 0:
+        if args.realign and framenum > (FIRST_FRAME + 15*30) and (framenum - FIRST_FRAME) % (5*30) == 0:
             # with open('robot_data.pkl', 'wb') as outp:
             #     pickle.dump(robots, outp, pickle.HIGHEST_PROTOCOL)
             #     Ts = dict()
@@ -191,6 +189,8 @@ if __name__ == '__main__':
             rob.add_observations(observations)
             rob.dkf()
             rob.tracker_manager()
+            # if args.realign:
+            #     rob.frame_realign()
             ic.add_groups(rob.camera_id, rob.groups_by_id)
             rob.groups_by_id = []
             if args.debug:
@@ -203,6 +203,13 @@ if __name__ == '__main__':
             topview_size = 600
             topview = np.ones((topview_size,topview_size,3))*255
             topview = topview.astype(np.uint8)
+            cv.rectangle(topview, 
+                (int(-7*topview_size/20 + topview_size/2), int(-7*topview_size/20 + topview_size/2)), 
+                (int(7*topview_size/20 + topview_size/2), int(7*topview_size/20 + topview_size/2)), 
+                color=(0, 0, 0), thickness=4)
+            cv.rectangle(topview, (int(topview_size/2), int(-7*topview_size/20 + topview_size/2)),
+                (int(3*topview_size/20 + topview_size/2), int(-7*topview_size/20 + topview_size/2)),
+                color=(255, 255, 255), thickness=4)
 
         else:
             combined = topview.copy()

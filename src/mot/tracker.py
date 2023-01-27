@@ -29,7 +29,8 @@ class Tracker():
         self.historical_states[:,0] = self._state.reshape((-1))
         self.historical_covariance = np.zeros((6, 6*self.rec_det_max_len)) * np.nan
         self.historical_covariance[:,0:6] = self.P
-        self.lifespan = 0        
+        self.lifespan = 0    
+        self.dead_cnt = -1    
 
         self.frames_seen = 1
         self._ell = 0
@@ -164,6 +165,18 @@ class Tracker():
             self.to_str = f'{self._id}, state: {np.array2string(self._state.T,precision=2)},' + \
                 f' not seen.'
             # self._add_recent_detection(None)
+        self._seen = False
+        self._ell += 1
+        
+        self.lifespan = min(self.lifespan + 1, self.rec_det_max_len)
+        self.dead_cnt += 1 if self.dead_cnt >= 0 else 0
+        self.historical_states = np.roll(self.historical_states, shift=1, axis=1)
+        self.historical_states[:,0] = self._state.reshape((-1))
+        self.historical_covariance = np.roll(self.historical_covariance, shift=6, axis=1)
+        self.historical_covariance[:,0:6] = self.P
+        
+        # if self.lifespan < 6:
+        #     return
         for cam_id in self.u:
             if cam_id not in self.recent_detections:
                 self.recent_detections[cam_id] = np.zeros((self.rec_det_max_len, 4)) * np.nan
@@ -176,13 +189,10 @@ class Tracker():
                 z = PARAM.R @ self.u[cam_id][0:4,:]
                 self.recent_detections[cam_id][0, 0:3] = np.concatenate([z[0:2, :].reshape(-1), [0]])
                 self.recent_detections[cam_id][0, 3] = np.linalg.norm(self._state[0:2,:] - z[0:2,:])
-        self.lifespan = min(self.lifespan + 1, self.rec_det_max_len)
-        self.historical_states = np.roll(self.historical_states, shift=1, axis=1)
-        self.historical_states[:,0] = self._state.reshape((-1))
-        self.historical_covariance = np.roll(self.historical_covariance, shift=6, axis=1)
-        self.historical_covariance[:,0:6] = self.P
-        self._seen = False
-        self._ell += 1
+        
+    def died(self):
+        self.dead_cnt = 0
+        self.xbar = dict(); self.u = dict(); self.U = dict()
         
     def include_appearance_in_obs(self):
         self.include_appearance = True

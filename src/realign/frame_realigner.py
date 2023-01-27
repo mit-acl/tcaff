@@ -3,19 +3,28 @@ from scipy.spatial.transform import Rotation as Rot
 
 from config import tracker_params as TRACK_PARAM
 
+def transform(T, vec):
+    unshaped_vec = vec.reshape(-1)
+    resized_vec = np.concatenate(
+        [unshaped_vec, np.ones((T.shape[0] - unshaped_vec.shape[0]))]).reshape((-1, 1))
+    transformed = T @ resized_vec
+    return transformed.reshape(-1)[:unshaped_vec.shape[0]].reshape(vec.shape)   
+
 class FrameRealigner():
     
-    def __init__(self, cam_id, connected_cams, detections_min_num, tolerance_growth_rate, 
-                 transform_mag_unity_tolerance, deg2m):
+    def __init__(self, cam_id, connected_cams, params):
         self.cam_id = cam_id
         self.transforms = dict()
+        self.new_transforms = dict()
         for cam in connected_cams:
             self.transforms[cam] = np.eye(4)
-        self.detections_min_num = detections_min_num
-        self.tol_growth_rate = tolerance_growth_rate
-        self.T_mag_unity_tol = transform_mag_unity_tolerance
-        self.deg2m = deg2m
+        self.detections_min_num = params.detections_min_num
+        self.tol_growth_rate = params.tolerance_growth_rate
+        self.T_mag_unity_tol = params.transform_mag_unity_tolerance
+        self.deg2m = params.DEG_2_M
         self.tolerance_scale = 1
+        self.realign_algorithm = params.realign_algorithm
+        self.ALGORITHMS = params.RealignAlgorithm
     
     def realign(self, trackers):
         local_dets = self._get_camera_detections(self.cam_id, trackers)
@@ -27,18 +36,33 @@ class FrameRealigner():
             dets1, dets2 = self.detection_pairs_2_ordered_arrays(local_dets, other_dets)
             T_new = self.calc_T(dets1, dets2)
             
+            self.new_transforms[cam_id] = T_new
             self.transforms[cam_id] = T_new @ self.transforms[cam_id]
             T_mags.append(self.T_mag(T_new))
         # TODO: Magic number here, we should have a better way to recognize a need for frame realignment
         # Intentionally left as 5 because I don't want to have this clause here, shouldn't arbitrarily trigger
         # realignment
         if len(trackers) > 5 and all(i == 0.0 for i in T_mags):
-            self.tolerance_scale *= self.tol_growth_rate
+            self.tolerance_scale *= self.tol_growth_rate # should this be here??
+            pass
         else:
             T_mags.append(.01) # prevent divide by zero warning
             scaling = self.tol_growth_rate ** (np.log2(max(T_mags) / self.T_mag_unity_tol))
-            self.tolerance_scale = max(1, self.tolerance_scale * scaling)
+            self.tolerance_scale = max(1, self.tolerance_scale * scaling) # does this cause crazy tau growth sometimes??
+            # self.tolerance_scale = max(1, scaling)
         # print(T_mags + [self.tolerance_scale])
+        
+    def rectify_detections(self, trackers):
+        for tracker in trackers:
+            for cam_num in tracker.recent_detections:
+                if cam_num not in self.new_transforms: continue
+                dets = tracker.recent_detections[cam_num]
+                T = self.transforms[cam_num]
+                for i in range(dets.shape[0]):
+                    dets[i, 0:3] = transform(T, dets[i, 0:3])
+                    # dets[i, 3] = np.linalg.norm(tracker.historical_states[0:2, i] - dets[i, 0:2])
+        self.new_transforms = dict()
+                
     
     def _get_camera_detections(self, cam_num, trackers):
         dets = []
@@ -71,7 +95,7 @@ class FrameRealigner():
     
     def calc_T(self, det1, det2, add_weighting=True):    
         if det1.shape[0] < self.detections_min_num or \
-            det2.shape[0 < self.detections_min_num]:
+            det2.shape[0] < self.detections_min_num:
             return np.eye(4)
         if False:
             mean_pts = (det1 + det2) / 2.0

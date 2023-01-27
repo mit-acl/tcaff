@@ -6,30 +6,29 @@ from copy import deepcopy
 
 from .tracker import Tracker
 from config import tracker_params as TRACK_PARAM
-from config import rover_mot_params as PARAM
 from realign.frame_realigner import FrameRealigner
 
 class MultiObjectTracker():
 
-    def __init__(self, camera_id, connected_cams, Tau_LDA, Tau_GDA, alpha, kappa, T, n_meas_init=2):
+    def __init__(self, camera_id, connected_cams, params, T):
         self.realigner = FrameRealigner(
             cam_id=camera_id,
             connected_cams=connected_cams,
-            detections_min_num=PARAM.MIN_DET_ALIGNMENT_LEN, 
-            tolerance_growth_rate=PARAM.TAU_LDA_GROWTH_FACTOR,
-            transform_mag_unity_tolerance=PARAM.TAU_GROWTH_MIN_TMAG,
-            deg2m=PARAM.DEG_2_M    
+            params=params 
         )
         # TODO: Tune for Tau
-        self.Tau_LDA = Tau_LDA
-        self.Tau_GDA = Tau_GDA
+        self.Tau_init = params.Tau_LDA
+        self.Tau_LDA = params.Tau_LDA
+        self.Tau_GDA = params.Tau_GDA
         self.Tau_grown = 1
-        self.alpha = alpha
-        self.kappa = kappa
+        self.alpha = params.alpha
+        self.kappa = params.kappa
         self.trackers = []
         self.new_trackers = []
+        self.old_trackers = []
         self.next_available_id = 0
-        self.n_meas_to_init_tracker = n_meas_init
+        self.n_meas_to_init_tracker = params.n_meas_to_init_tracker
+        
         self.camera_id = camera_id
         self.tracker_mapping = dict()
         self.unassociated_obs = []
@@ -264,8 +263,9 @@ class MultiObjectTracker():
             return self.recent_detection_list
         
     def frame_realign(self):
-        self.realigner.realign(self.trackers)
-        self.Tau_LDA = self.realigner.tolerance_scale * PARAM.TAU_LDA
+        self.realigner.realign(self.trackers + self.old_trackers)
+        self.realigner.rectify_detections(self.trackers + self.old_trackers)
+        self.Tau_LDA = self.realigner.tolerance_scale * self.Tau_init
 
     def _get_tracker_groups(self, similarity_scores):
         # TODO: Maximum clique kind of thing going on here...
@@ -428,10 +428,16 @@ class MultiObjectTracker():
         return obs
         
     def manage_deletions(self):
+        for tracker in self.old_trackers:
+            tracker.cycle()
+            if tracker.dead_cnt > TRACK_PARAM.n_recent_dets:
+                self.old_trackers.remove(tracker)
         for tracker in self.trackers + self.new_trackers:
             tracker.cycle()
             if tracker.ell > self.kappa:
                 self.trackers.remove(tracker)
+                self.old_trackers.append(tracker)
+                tracker.died()
             
     def __str__(self):
         return_str = ''
