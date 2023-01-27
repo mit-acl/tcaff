@@ -22,9 +22,14 @@ class Tracker():
         self._state = np.concatenate((estimated_state, np.zeros((2,1))), 0)
         self._a = [feature_vec] if not isinstance(feature_vec, list) else feature_vec
         self.include_appearance = False
-        # self.recent_detections = []
+        
         self.rec_det_max_len = PARAM.n_recent_dets
         self.recent_detections = dict()
+        self.historical_states = np.zeros((6, self.rec_det_max_len)) * np.nan
+        self.historical_states[:,0] = self._state.reshape((-1))
+        self.historical_covariance = np.zeros((6, 6*self.rec_det_max_len)) * np.nan
+        self.historical_covariance[:,0:6] = self.P
+        self.lifespan = 0        
 
         self.frames_seen = 1
         self._ell = 0
@@ -171,6 +176,11 @@ class Tracker():
                 z = PARAM.R @ self.u[cam_id][0:4,:]
                 self.recent_detections[cam_id][0, 0:3] = np.concatenate([z[0:2, :].reshape(-1), [0]])
                 self.recent_detections[cam_id][0, 3] = np.linalg.norm(self._state[0:2,:] - z[0:2,:])
+        self.lifespan = min(self.lifespan + 1, self.rec_det_max_len)
+        self.historical_states = np.roll(self.historical_states, shift=1, axis=1)
+        self.historical_states[:,0] = self._state.reshape((-1))
+        self.historical_covariance = np.roll(self.historical_covariance, shift=6, axis=1)
+        self.historical_covariance[:,0:6] = self.P
         self._seen = False
         self._ell += 1
         
