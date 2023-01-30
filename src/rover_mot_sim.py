@@ -129,7 +129,7 @@ if __name__ == '__main__':
         frame_time = framenum / 30 + detector.start_time
         
         # Frame Realignment
-        if args.realign and framenum > (FIRST_FRAME + 15*30) and (framenum - FIRST_FRAME) % (5*30) == 0:
+        if args.realign and framenum > (FIRST_FRAME + 15*30) and (framenum - FIRST_FRAME) % (15*30) == 0:
             # with open('robot_data.pkl', 'wb') as outp:
             #     pickle.dump(robots, outp, pickle.HIGHEST_PROTOCOL)
             #     Ts = dict()

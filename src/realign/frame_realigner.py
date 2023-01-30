@@ -62,6 +62,31 @@ class FrameRealigner():
                     dets[i, 0:3] = transform(T, dets[i, 0:3])
                     # dets[i, 3] = np.linalg.norm(tracker.historical_states[0:2, i] - dets[i, 0:2])
         self.new_transforms = dict()
+        
+    def transform_obs(self, obs):
+        # TODO: Right now I am assuming H and R are the same in each tracker!
+        obs_cam = obs.tracker_id[0]
+        if obs_cam not in self.transforms:
+            return obs
+        if obs_cam == self.cam_id:
+            return obs
+        
+        # Extract z and correct
+        # TODO: Assuming H is identity matrix (or 1s along diag)
+        if obs.u is not None:
+            z = TRACK_PARAM.R @ obs.u[0:4,:]
+            p_meas = np.concatenate([z[0:2,:], [[0.], [1.]]], axis=0)
+            p_meas_corrected = (self.transforms[obs_cam] @ p_meas)[0:2,:]
+            obs.u = TRACK_PARAM.H.T @ np.linalg.inv(TRACK_PARAM.R) @ np.concatenate([p_meas_corrected, z[2:]], axis=0)
+            
+        # Extract xbar and correct
+        pos = np.concatenate([obs.xbar[0:2,:], [[0], [1]]], axis=0)
+        vel = np.concatenate([obs.xbar[4:6,:], [[0]]], axis=0)
+        pos_corrected = self.transforms[obs_cam] @ pos
+        vel_corrected = self.transforms[obs_cam][0:3, 0:3] @ vel
+        obs.xbar[0:2,:] = pos_corrected[0:2,:]
+        obs.xbar[4:6,:] = vel_corrected[0:2,:]
+        return obs
                 
     
     def _get_camera_detections(self, cam_num, trackers):

@@ -210,7 +210,7 @@ class MultiObjectTracker():
         # Process each observation
         for obs in observations:
             if transform:
-                obs = self._transform_obs(obs)
+                obs = self.realigner.transform_obs(obs)
             # Check if we recognize the tracker id
             if obs.tracker_id in self.tracker_mapping: 
                 target_tracker_id = self.tracker_mapping[obs.tracker_id]
@@ -401,31 +401,6 @@ class MultiObjectTracker():
             groups_by_id.append(group_by_id)
         
         return groups_by_id
-    
-    def _transform_obs(self, obs):
-        # TODO: Right now I am assuming H and R are the same in each tracker!
-        obs_cam = obs.tracker_id[0]
-        if obs_cam not in self.realigner.transforms:
-            return obs
-        if obs_cam == self.camera_id:
-            return obs
-        
-        # Extract z and correct
-        # TODO: Assuming H is identity matrix (or 1s along diag)
-        if obs.u is not None:
-            z = TRACK_PARAM.R @ obs.u[0:4,:]
-            p_meas = np.concatenate([z[0:2,:], [[0.], [1.]]], axis=0)
-            p_meas_corrected = (self.realigner.transforms[obs_cam] @ p_meas)[0:2,:]
-            obs.u = TRACK_PARAM.H.T @ np.linalg.inv(TRACK_PARAM.R) @ np.concatenate([p_meas_corrected, z[2:]], axis=0)
-            
-        # Extract xbar and correct
-        pos = np.concatenate([obs.xbar[0:2,:], [[0], [1]]], axis=0)
-        vel = np.concatenate([obs.xbar[4:6,:], [[0]]], axis=0)
-        pos_corrected = self.realigner.transforms[obs_cam] @ pos
-        vel_corrected = self.realigner.transforms[obs_cam][0:3, 0:3] @ vel
-        obs.xbar[0:2,:] = pos_corrected[0:2,:]
-        obs.xbar[4:6,:] = vel_corrected[0:2,:]
-        return obs
         
     def manage_deletions(self):
         for tracker in self.old_trackers:
