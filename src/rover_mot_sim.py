@@ -75,6 +75,10 @@ if __name__ == '__main__':
     parser.add_argument('--realign',
             action='store_true',
             help='Robots will perform frame realignment')
+    parser.add_argument('--cam-type',
+            type=str,
+            default="d435",
+            help="Color d435 or fisheye t265")
     args = parser.parse_args()
 
     root = pathlib.Path(args.root)
@@ -97,7 +101,7 @@ if __name__ == '__main__':
     caps = get_videos(root, run=args.run, num_cams=num_cams)
     robots = []
     mes = []
-    detector = PersonDetector(run=args.run, sigma_r=args.std_dev_rotation*np.pi/180, sigma_t=args.std_dev_translation, num_cams=num_cams)
+    detector = PersonDetector(run=args.run, sigma_r=args.std_dev_rotation*np.pi/180, sigma_t=args.std_dev_translation, num_cams=num_cams, cam_type=args.cam_type)
     for i in range(num_cams):
         T_cam = detector.get_cam_T(i)
         connected_cams = [*range(num_cams)]; connected_cams.remove(i)
@@ -129,7 +133,7 @@ if __name__ == '__main__':
         frame_time = framenum / 30 + detector.start_time
         
         # Frame Realignment
-        if args.realign and framenum > (FIRST_FRAME + 15*30) and (framenum - FIRST_FRAME) % (15*30) == 0:
+        if args.realign and framenum > (FIRST_FRAME + 10*30) and (framenum - FIRST_FRAME) % (10*30) == 0:
             # with open('robot_data.pkl', 'wb') as outp:
             #     pickle.dump(robots, outp, pickle.HIGHEST_PROTOCOL)
             #     Ts = dict()

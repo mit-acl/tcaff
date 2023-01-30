@@ -6,7 +6,7 @@ from numpy.linalg import inv
 
 class PersonDetector():
 
-    def __init__(self, run=1, device='cuda', threshold=.99, sigma_r=0, sigma_t=0, num_cams=4):
+    def __init__(self, run=1, device='cuda', threshold=.99, sigma_r=0, sigma_t=0, num_cams=4, cam_type='d435'):
         self.extractor = FeatureExtractor(
             model_name='osnet_x1_0', # TODO: Is this a good enough re-id network?
             # model_path='a/b/c/model.pth.tar',
@@ -14,7 +14,7 @@ class PersonDetector():
             verbose=False
         )
         # self.detections = get_epfl_frame_info(sigma_r=sigma_r, sigma_t=sigma_t)
-        self.detections = get_static_test_detections(run=run, sigma_r=sigma_r, sigma_t=sigma_t, num_cams=num_cams)
+        self.detections = get_static_test_detections(run=run, sigma_r=sigma_r, sigma_t=sigma_t, num_cams=num_cams, cam_type=cam_type)
         self.x_max = 1920
         self.y_max = 1080
         self.start_time = self.detections[0].time(0)
