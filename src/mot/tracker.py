@@ -157,7 +157,16 @@ class Tracker():
         self.P = self.A @ M @ self.A.T + self.Q
         self.V = self.P[0:2,0:2] + self.R[0:2,0:2]
 
-    def cycle(self):
+    def cycle(self, historical_only=False):
+        
+        self.historical_states = np.roll(self.historical_states, shift=1, axis=1)
+        self.historical_states[:,0] = self._state.reshape((-1))
+        self.historical_covariance = np.roll(self.historical_covariance, shift=6, axis=1)
+        self.historical_covariance[:,0:6] = self.P
+        
+        if historical_only:
+            return
+        
         if self._seen:
             self.to_str = f'{self._id}, state: {np.array2string(self._state.T,precision=2)},' + \
                 f' measurement: {np.array2string(self._measurement.T,precision=2)}'
@@ -168,12 +177,8 @@ class Tracker():
         self._seen = False
         self._ell += 1
         
-        self.lifespan = min(self.lifespan + 1, self.rec_det_max_len)
+        self.lifespan = min(self.lifespan + 1, self.rec_det_max_len - 1)
         self.dead_cnt += 1 if self.dead_cnt >= 0 else 0
-        self.historical_states = np.roll(self.historical_states, shift=1, axis=1)
-        self.historical_states[:,0] = self._state.reshape((-1))
-        self.historical_covariance = np.roll(self.historical_covariance, shift=6, axis=1)
-        self.historical_covariance[:,0:6] = self.P
         
         # if self.lifespan < 6:
         #     return

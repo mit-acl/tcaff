@@ -1,7 +1,9 @@
 import numpy as np
+from numpy.linalg import inv
 from scipy.spatial.transform import Rotation as Rot
 
 from config import tracker_params as TRACK_PARAM
+from mot.observation_msg import ObservationMsg
 
 def transform(T, vec):
     unshaped_vec = vec.reshape(-1)
@@ -46,11 +48,13 @@ class FrameRealigner():
             self.tolerance_scale *= self.tol_growth_rate # should this be here??
             pass
         else:
+            # TODO: Figure out how exactly I am going to scale T
             T_mags.append(.01) # prevent divide by zero warning
             scaling = self.tol_growth_rate ** (np.log2(max(T_mags) / self.T_mag_unity_tol))
-            self.tolerance_scale = max(1, self.tolerance_scale * scaling) # does this cause crazy tau growth sometimes??
-            # self.tolerance_scale = max(1, scaling)
-        # print(T_mags + [self.tolerance_scale])
+            # scaling = self.tol_growth_rate * np.mean(T_mags) / self.T_mag_unity_tol
+            # self.tolerance_scale = max(1, self.tolerance_scale * scaling) # does this cause crazy tau growth sometimes??
+            self.tolerance_scale = max(1, scaling)
+        print(T_mags + [self.tolerance_scale])
         
     def rectify_detections(self, trackers):
         for tracker in trackers:
@@ -61,6 +65,33 @@ class FrameRealigner():
                 for i in range(dets.shape[0]):
                     dets[i, 0:3] = transform(T, dets[i, 0:3])
                     # dets[i, 3] = np.linalg.norm(tracker.historical_states[0:2, i] - dets[i, 0:2])
+            
+            ## Fixing state
+            tracker._state = tracker.historical_states[:, tracker.lifespan].reshape((6,1))
+            tracker.P = tracker.historical_covariance[:, tracker.lifespan*6:(tracker.lifespan+1)*6]
+            for i in range(tracker.lifespan, tracker.dead_cnt, -1):
+                tracker.predict()
+                for cam_num in tracker.recent_detections:
+                    det = tracker.recent_detections[cam_num][i, 0:3]
+                    obs_msg = ObservationMsg(
+                        tracker_id=(cam_num, -1), mapped_ids=[], 
+                        xbar=tracker.xbar[tracker.id[0]], ell=tracker.ell
+                    )
+                    if not any(np.isnan(det)):
+                        u = tracker.H.T @ inv(tracker.R) @ np.concatenate([det[0:2].reshape((2,1)), tracker.state[2:4,:].reshape((2,1))], axis=0)
+                        U = tracker.H.T @ inv(tracker.R) @ tracker.H # TODO: right?
+                        obs_msg.add_measurement(u, U)
+                    tracker.observation_update(obs_msg)
+                tracker.correction()
+                # for cam_num in tracker.recent_detections:
+                #     det = tracker.recent_detections[cam_num][i, 0:3]
+                #     if not any(np.isnan(det)):
+                #         tracker.recent_detections[cam_num][i, 3] = \
+                #             np.linalg.norm(tracker.state[:, 0:2] - det[0:2])
+                tracker.cycle(historical_only=True)
+            for i in range(tracker.dead_cnt + 1):
+                tracker.cycle(historical_only=True)
+                
         self.new_transforms = dict()
         
     def transform_obs(self, obs):
@@ -77,7 +108,7 @@ class FrameRealigner():
             z = TRACK_PARAM.R @ obs.u[0:4,:]
             p_meas = np.concatenate([z[0:2,:], [[0.], [1.]]], axis=0)
             p_meas_corrected = (self.transforms[obs_cam] @ p_meas)[0:2,:]
-            obs.u = TRACK_PARAM.H.T @ np.linalg.inv(TRACK_PARAM.R) @ np.concatenate([p_meas_corrected, z[2:]], axis=0)
+            obs.u = TRACK_PARAM.H.T @ inv(TRACK_PARAM.R) @ np.concatenate([p_meas_corrected, z[2:]], axis=0)
             
         # Extract xbar and correct
         pos = np.concatenate([obs.xbar[0:2,:], [[0], [1]]], axis=0)
