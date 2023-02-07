@@ -44,14 +44,16 @@ class FrameRealigner():
         # TODO: Magic number here, we should have a better way to recognize a need for frame realignment
         # Intentionally left as 5 because I don't want to have this clause here, shouldn't arbitrarily trigger
         # realignment
-        if len(trackers) > 5 and all(i == 0.0 for i in T_mags):
+        if self.realign_algorithm == self.ALGORITHMS.REALIGN_WLS:
+            pass
+        elif len(trackers) > 5 and all(i == 0.0 for i in T_mags):
             self.tolerance_scale *= self.tol_growth_rate # should this be here??
             pass
         else:
             # TODO: Figure out how exactly I am going to scale T
-            T_mags.append(.01) # prevent divide by zero warning
-            scaling = self.tol_growth_rate ** (np.log2(max(T_mags) / self.T_mag_unity_tol))
-            # scaling = self.tol_growth_rate * np.mean(T_mags) / self.T_mag_unity_tol
+            # T_mags.append(.01) # prevent divide by zero warning
+            # scaling = self.tol_growth_rate ** (np.log2(max(T_mags) / self.T_mag_unity_tol))
+            scaling = self.tol_growth_rate * np.mean(T_mags) / self.T_mag_unity_tol
             # self.tolerance_scale = max(1, self.tolerance_scale * scaling) # does this cause crazy tau growth sometimes??
             self.tolerance_scale = max(1, scaling)
         print(T_mags + [self.tolerance_scale])

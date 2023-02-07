@@ -79,6 +79,8 @@ if __name__ == '__main__':
             type=str,
             default="d435",
             help="Color d435 or fisheye t265")
+    parser.add_argument('--wls-only',
+            action='store_true')
     args = parser.parse_args()
 
     root = pathlib.Path(args.root)
@@ -96,6 +98,8 @@ if __name__ == '__main__':
         START_METRIC_FRAME = (LAST_FRAME - FIRST_FRAME) / 2
     bagfile = str(root / bagfile)
     GT = GroundTruth(bagfile, [f'{i+1}' for i in range(num_peds)], 'RR01')
+    if args.wls_only:
+        PARAMS.realign_algorithm = PARAMS.RealignAlgorithm.REALIGN_WLS
 
     num_cams = args.num_cams
     caps = get_videos(root, run=args.run, num_cams=num_cams)
