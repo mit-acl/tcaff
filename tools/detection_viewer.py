@@ -4,8 +4,10 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import time
 
-from detections import get_epfl_frame_info, get_static_test_detections, GroundTruth
-GT = GroundTruth('/home/masonbp/ford-project/data/static-20221216/run03_2022-12-16-15-52-06.bag', ['1', '2', '3', '4', '5'], 'RR01')
+import sys
+sys.path.append('..')
+from src.frontend.detections import get_epfl_frame_info, get_static_test_detections, GroundTruth
+GT = GroundTruth('/home/masonbp/ford-project/data/static-20221216/run01_filtered.bag', ['1', '2', '3'], 'RR01')
 
 def animate(i, start_frame, cams, bounds):
     minx, maxx, miny, maxy = bounds
@@ -37,7 +39,7 @@ def animate(i, start_frame, cams, bounds):
 start_frame = 40
 
 ########### Set up detections ############
-frame_infos = get_static_test_detections(run=3, sigma_r = 0*np.pi/180)
+frame_infos = get_static_test_detections(run=1, sigma_r = 0*np.pi/180, num_cams=1, cam_type='t265')
 num_cams = len(frame_infos)
 
 mins = [np.inf, np.inf]

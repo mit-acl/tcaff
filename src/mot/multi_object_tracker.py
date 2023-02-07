@@ -1,28 +1,51 @@
 import numpy as np
 from numpy.linalg import norm as norm
 from scipy.optimize import linear_sum_assignment
+from scipy.spatial.transform import Rotation as Rot
+from copy import deepcopy
 
-from tracker import Tracker
+from .tracker import Tracker
+from config import tracker_params as TRACK_PARAM
+from realign.frame_realigner import FrameRealigner
 
-class Camera():
+class MultiObjectTracker():
 
-    def __init__(self, camera_id, Tau_LDA, Tau_GDA, alpha, kappa, n_meas_init=2):
+    def __init__(self, camera_id, connected_cams, params, T):
+        self.realigner = FrameRealigner(
+            cam_id=camera_id,
+            connected_cams=connected_cams,
+            params=params 
+        )
         # TODO: Tune for Tau
-        self.Tau_LDA = Tau_LDA
-        self.Tau_GDA = Tau_GDA
-        self.alpha = alpha
-        self.kappa = kappa
+        self.Tau_init = params.Tau_LDA
+        self.Tau_LDA = params.Tau_LDA
+        self.Tau_GDA = params.Tau_GDA
+        self.Tau_grown = 1
+        self.alpha = params.alpha
+        self.kappa = params.kappa
         self.trackers = []
         self.new_trackers = []
+        self.old_trackers = []
         self.next_available_id = 0
-        self.n_meas_to_init_tracker = n_meas_init
+        self.n_meas_to_init_tracker = params.n_meas_to_init_tracker
+        
         self.camera_id = camera_id
         self.tracker_mapping = dict()
         self.unassociated_obs = []
         self.inconsistencies = 0
         self.groups_by_id = []
+        self.T_local_global = T
+        self.recent_detection_list = []
+        for i in range(50):
+            self.recent_detection_list.append(None)
+        
 
     def local_data_association(self, Zs, feature_vecs):
+        frame_detections = []
+        for z in Zs:
+            frame_detections.append(z[0:2,:].reshape(-1,1))
+        self.recent_detection_list.insert(0, frame_detections)
+        self.recent_detection_list = self.recent_detection_list[:-1]
         all_trackers = self.trackers + self.new_trackers
         geometry_scores = np.zeros((len(all_trackers), len(Zs)))
         appearance_scores = np.zeros((len(all_trackers), len(Zs)))
@@ -167,7 +190,8 @@ class Camera():
         
         self.groups_by_id = self._create_trackers(tracker_groups, tracked_states)
         unassociated_obs = self.unassociated_obs
-        len_unassociated_obs = self.add_observations(unassociated_obs)
+        len_unassociated_obs = self.add_observations(unassociated_obs, transform=False)
+            # transform has already occured at this point
         assert len_unassociated_obs == 0
         
         self.manage_deletions()
@@ -179,9 +203,15 @@ class Camera():
             observations.append(tracker.observation_msg())
         return observations
 
-    def add_observations(self, observations):
+    def add_observations(self, observations, transform=True):
+        # TODO: Probably not the best memory usage here...
+        observations = deepcopy(observations)
         self.unassociated_obs = []
+        # Process each observation
         for obs in observations:
+            if transform:
+                obs = self.realigner.transform_obs(obs)
+            # Check if we recognize the tracker id
             if obs.tracker_id in self.tracker_mapping: 
                 target_tracker_id = self.tracker_mapping[obs.tracker_id]
                 for tracker in self.trackers:
@@ -190,6 +220,7 @@ class Camera():
                         break
             else:
                 matched = False
+                # Check if the incoming message has already been paired to one of our trackers
                 for mid in obs.mapped_ids:
                     if mid in self.tracker_mapping:
                         matched = True
@@ -200,6 +231,7 @@ class Camera():
                                 tracker.observation_update(obs)
                                 break
                         break
+                # Add to unassociated_obs for tracker initialization if this is new
                 if not matched:                        
                     assert obs.has_appearance_info, f'From camera: {self.camera_id}, No appearance info: {obs}'
                     self.unassociated_obs.append(obs)
@@ -220,6 +252,20 @@ class Camera():
             for tracker in self.trackers:
                 tracker_dict[tracker.id] = np.array(tracker.state[0:2,:].reshape(-1))
             return tracker_dict
+        
+    def get_recent_detections(self, from_trackers=False):
+        if from_trackers:
+            recent_detections = []
+            for tracker in self.trackers:
+                recent_detections.append(tracker.recent_detections)
+            return recent_detections
+        else: # raw detections
+            return self.recent_detection_list
+        
+    def frame_realign(self):
+        self.realigner.realign(self.trackers + self.old_trackers)
+        self.realigner.rectify_detections(self.trackers + self.old_trackers)
+        self.Tau_LDA = self.realigner.tolerance_scale * self.Tau_init
 
     def _get_tracker_groups(self, similarity_scores):
         # TODO: Maximum clique kind of thing going on here...
@@ -258,6 +304,7 @@ class Camera():
         
         # # associate with local indexes
         STOP_INCONSISTENCIES = True
+        # TODO: This is a simple hack. It improves MOT performance, but can also lead to hackish results (gruops with common elements)
         if STOP_INCONSISTENCIES:
             if similarity_scores.shape[0] != similarity_scores.shape[1]:
                 for group in new_tracker_groups:
@@ -267,6 +314,18 @@ class Camera():
                         if similarity_scores[i,local_idx] < 1:
                             group.add(local_idx)
                             break
+            # need_merging = []
+            # for group in new_tracker_groups:
+            #     for other_group in new_tracker_groups:
+            #         if group == other_group: continue
+            #         for el in group:
+            #             if el in other_group:
+            #                 need_merging.append((group, other_group))
+            #                 break
+            # for pair in need_merging:
+            #     if pair[0] in new_tracker_groups and pair[1] in new_tracker_groups:
+            #         new_tracker_groups.remove(pair[0]); new_tracker_groups.remove(pair[1])
+            #         new_tracker_groups.append(pair[0].union(pair[1]))    
         else:
             if similarity_scores.shape[0] != similarity_scores.shape[1]:
                 for group in new_tracker_groups:
@@ -342,12 +401,18 @@ class Camera():
             groups_by_id.append(group_by_id)
         
         return groups_by_id
-
+        
     def manage_deletions(self):
+        for tracker in self.old_trackers:
+            tracker.cycle()
+            if tracker.dead_cnt > TRACK_PARAM.n_recent_dets:
+                self.old_trackers.remove(tracker)
         for tracker in self.trackers + self.new_trackers:
             tracker.cycle()
             if tracker.ell > self.kappa:
                 self.trackers.remove(tracker)
+                self.old_trackers.append(tracker)
+                tracker.died()
             
     def __str__(self):
         return_str = ''

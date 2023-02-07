@@ -18,7 +18,7 @@ class MetricHandler:
         else:
             metric[identifier] = (val, 1, [val])
             
-    def get_metric_along_line(self, metric_type, line_lambda, identifier_x_idx, ret_type='avg'):
+    def get_metric_along_line(self, metric_type, line_lambda, identifier_x_idx, ret_type='avg', sort=True):
         metric = self.data[metric_type]
         line_x = []
         line_y = []
@@ -34,6 +34,9 @@ class MetricHandler:
                 elif ret_type == 'box':
                     line_x.append(identifier[identifier_x_idx])
                     line_y.append(all)
+        if sort:
+            line_y = [y for x, y in sorted(zip(line_x, line_y))]
+            line_x = sorted(line_x)
         return line_x, line_y
         
     def __str__(self):
@@ -97,7 +100,7 @@ if __name__ == '__main__':
         x, y = mh.get_metric_along_line(metric, lambda x: x[1] == 0.0, 0, ret_type='avg')
         plt.plot(x, y, '--o')
         plt.title(f'Average {metric}')
-        plt.xlabel('Translation Alignment Error Standard Dev (m)')
+        plt.xlabel('Translation Error Standard Dev (m)')
         plt.ylabel(metric)
         plt.grid(True)
         plt.show()

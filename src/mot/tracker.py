@@ -1,27 +1,19 @@
 import numpy as np
 from numpy.linalg import inv
-from observation_msg import ObservationMsg
 from copy import deepcopy
+
+from .observation_msg import ObservationMsg
+from config import tracker_params as PARAM
+
 class Tracker():
 
-    def __init__(self, camera_id, tracker_id, estimated_state, feature_vec, Ts=1):
-        self.A = np.eye(6); self.A[0,4] = 1/Ts; self.A[1,5] = 1/Ts
-        self.H = np.eye(4,6)
-        # self.Q = np.eye(6)
-        # self.Q = np.array([[
-        #     [Ts**4/4, Ts**3/2],
-        #     [Ts**3/2, Ts**2]
-        # ]])
-        self.Q = np.array([
-            [Ts**4/4, 0, 0, 0, Ts**3/2, 0],
-            [0, Ts**4/4, 0, 0, 0, Ts**3/2],
-            [0,0,1,0,0,0],
-            [0,0,0,1,0,0],
-            [Ts**3/2,0,0,0,Ts**2,0],
-            [0,Ts**3/2,0,0,0,Ts**2]
-        ])
-        self.R = np.eye(4)*3
-        self.P = np.eye(6)
+    def __init__(self, camera_id, tracker_id, estimated_state, feature_vec): #, Ts=1):
+        self.A = PARAM.A
+        # TODO: Something about my Ts seems to be off, changing it significantly changed results
+        self.H = PARAM.H
+        self.Q = PARAM.Q
+        self.R = PARAM.R
+        self.P = PARAM.P
         self.V = self.P[0:2,0:2] + self.R[0:2,0:2] # Pxy + Rxy
 
         self._id = (camera_id, tracker_id)
@@ -30,14 +22,30 @@ class Tracker():
         self._state = np.concatenate((estimated_state, np.zeros((2,1))), 0)
         self._a = [feature_vec] if not isinstance(feature_vec, list) else feature_vec
         self.include_appearance = False
+        
+        self.rec_det_max_len = PARAM.n_recent_dets
+        self.recent_detections = dict()
+        self.historical_states = np.zeros((6, self.rec_det_max_len)) * np.nan
+        self.historical_states[:,0] = self._state.reshape((-1))
+        self.historical_covariance = np.zeros((6, 6*self.rec_det_max_len)) * np.nan
+        self.historical_covariance[:,0:6] = self.P
+        self.lifespan = 0    
+        self.dead_cnt = -1    
 
         self.frames_seen = 1
         self._ell = 0
         self._seen = False
         self.seen_by_this_camera = False
-        self.Ts = Ts
-        self.color = (np.random.randint(0,255), np.random.randint(0,255), np.random.randint(0,255))
+        # self.color = (np.random.randint(0,255), np.random.randint(0,255), np.random.randint(0,255))
         self.to_str = ''
+        if camera_id == 0:
+            self.color = (np.random.randint(100,255), 0, 0)
+        elif camera_id == 1:
+            self.color = (0, np.random.randint(100,255), 0)
+        elif camera_id == 2:
+            self.color = (0, 0, np.random.randint(100,255))
+        elif camera_id == 3:
+            self.color = (np.random.randint(100,255), 0, np.random.randint(100,255))
 
         self.predict()
 
@@ -72,6 +80,7 @@ class Tracker():
         self._measurement = measurement
         if feature_vec is not None:
             self._a.append(feature_vec)
+        # self._add_recent_detection(measurement[0:2,:].reshape(-1,1))
 
     def predict(self):
         xhat = self._state
@@ -148,18 +157,67 @@ class Tracker():
         self.P = self.A @ M @ self.A.T + self.Q
         self.V = self.P[0:2,0:2] + self.R[0:2,0:2]
 
-    def cycle(self):
+    def cycle(self, historical_only=False):
+        
+        self.historical_states = np.roll(self.historical_states, shift=1, axis=1)
+        self.historical_states[:,0] = self._state.reshape((-1))
+        self.historical_covariance = np.roll(self.historical_covariance, shift=6, axis=1)
+        self.historical_covariance[:,0:6] = self.P
+        
+        if historical_only:
+            return
+        
         if self._seen:
             self.to_str = f'{self._id}, state: {np.array2string(self._state.T,precision=2)},' + \
                 f' measurement: {np.array2string(self._measurement.T,precision=2)}'
         else:
             self.to_str = f'{self._id}, state: {np.array2string(self._state.T,precision=2)},' + \
                 f' not seen.'
+            # self._add_recent_detection(None)
         self._seen = False
         self._ell += 1
         
+        self.lifespan = min(self.lifespan + 1, self.rec_det_max_len - 1)
+        self.dead_cnt += 1 if self.dead_cnt >= 0 else 0
+        
+        # if self.lifespan < 6:
+        #     return
+        for cam_id in self.u:
+            if cam_id not in self.recent_detections:
+                self.recent_detections[cam_id] = np.zeros((self.rec_det_max_len, 4)) * np.nan
+        for cam_id in self.recent_detections:
+            self.recent_detections[cam_id] = np.roll(self.recent_detections[cam_id], shift=1, axis=0)
+            if cam_id not in self.u:
+                self.recent_detections[cam_id][0, :] = np.zeros(4) * np.nan
+            else:
+                # TODO: Assuming H is identity matrix (or 1s along diag)
+                z = PARAM.R @ self.u[cam_id][0:4,:]
+                self.recent_detections[cam_id][0, 0:3] = np.concatenate([z[0:2, :].reshape(-1), [0]])
+                self.recent_detections[cam_id][0, 3] = np.linalg.norm(self._state[0:2,:] - z[0:2,:])
+        
+    def died(self):
+        self.dead_cnt = 0
+        self.xbar = dict(); self.u = dict(); self.U = dict()
+        
     def include_appearance_in_obs(self):
         self.include_appearance = True
+        
+    def get_recent_detection_array(self):
+        ids = []
+        for camera_id in self.recent_detections:
+            ids.append(camera_id)
+        detection_array = None
+        for i in sorted(ids):
+            if detection_array is None:
+                detection_array = np.copy(self.recent_detections[i])
+            else:
+                detection_array = np.concatenate([detection_array, self.recent_detections[i]], axis=1)
+        return detection_array
+        
+    def _add_recent_detection(self, detection):
+        self.recent_detections.insert(0, detection)
+        self.recent_detections = \
+            self.recent_detections[:min(len(self.recent_detections), self.rec_det_max_len)]
 
     def __str__(self):
         return self.to_str

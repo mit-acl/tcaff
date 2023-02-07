@@ -1,10 +1,14 @@
 import numpy as np
 import motmetrics as mm
+from copy import deepcopy
 
 class MetricEvaluator():
 
-    def __init__(self, max_d=.5):
+    def __init__(self, t_cam, max_d=.75, noise_rot=np.eye(2), noise_tran=np.zeros((2,1))):
         self.max_d = max_d
+        self.t_cam = t_cam
+        self.R_noise = noise_rot
+        self.t_noise = noise_tran
         self.acc = mm.MOTAccumulator(auto_id=True)
         
     @property
@@ -43,6 +47,13 @@ class MetricEvaluator():
         return summary[metric_name].iloc[0]
     
     def update(self, gt_dict, hyp_dict):
+        # put ground truth into camera frame
+        gt_dict = deepcopy(gt_dict)
+        for gt_id in gt_dict:
+            gt_pos = np.array(gt_dict[gt_id]).reshape((-1,1))
+            gt_pos_og_shape = gt_dict[gt_id].shape
+            gt_dict[gt_id] = (self.R_noise @ (gt_pos - self.t_cam) + self.t_cam + self.t_noise).reshape(gt_pos_og_shape)
+            
         gt_id_list, gt_pt_matrix = self._matrix_list_form(gt_dict)
         hyp_id_list, hyp_pt_matrix = self._matrix_list_form(hyp_dict)
         
@@ -71,3 +82,36 @@ class MetricEvaluator():
         # if out_matrix == None:
         #     out_matrix = np.array([[]])
         return out_list, out_matrix
+    
+def get_avg_metric(metric, mes, divide_by_frames=False):
+    num_cams=len(mes)
+    m_avg = 0
+    for me in mes:
+        if divide_by_frames:
+            m_val = me.get_metric(metric) / (me.get_metric('num_frames') * num_cams)
+        else:
+            m_val = me.get_metric(metric) / num_cams
+        m_avg += m_val
+    return m_avg
+
+def print_metric_results(mes, inconsistencies, agents):
+    mota = get_avg_metric('mota', mes)
+    motp = get_avg_metric('motp', mes)
+    fp = get_avg_metric('num_false_positives', mes, divide_by_frames=True)
+    fn = get_avg_metric('num_misses', mes, divide_by_frames=True)
+    switch = get_avg_metric('num_switches', mes, divide_by_frames=True)
+    precision = get_avg_metric('precision', mes)
+    recall = get_avg_metric('recall', mes)
+    total_num_tracks = sum([len(a.tracker_mapping) / len(agents) for a in agents]) / len(agents)
+    incon_per_track = inconsistencies / total_num_tracks if total_num_tracks else 0.0
+
+    print(f'mota: {mota}')
+    print(f'motp: {motp}')
+    print(f'fp: {fp}')
+    print(f'fn: {fn}')
+    print(f'switch: {switch}')
+    print(f'inconsistencies: {inconsistencies}')
+    print(f'precision: {precision}')
+    print(f'recall: {recall}')
+    print(f'num_tracks: {total_num_tracks}')
+    print(f'incon_per_track: {incon_per_track}')

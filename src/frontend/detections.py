@@ -31,7 +31,7 @@ class Detections():
         if sigma_r != 0:
             # TODO: Adding subsequent rotations isn't really Gaussian, if small should be close enough?
             # Maybe using rotvec?
-            self.R_offset = Rot.from_euler('xyz', [np.random.normal(0, sigma_r), np.random.normal(0, sigma_r), np.random.normal(0, sigma_r)]).as_matrix()
+            self.R_offset = Rot.from_euler('z', np.random.normal(0, sigma_r)).as_matrix()
         if sigma_t != 0:
             self.T_offset = np.array([np.random.normal(0, sigma_t/np.sqrt(2)), np.random.normal(0, sigma_t/np.sqrt(2)), 0.0]).reshape((3,1))
         
@@ -195,7 +195,7 @@ def get_epfl_frame_info(sigma_r=0, sigma_t=0):
         
     return fis
 
-def get_static_test_detections(run=1, sigma_r=0, sigma_t=0, num_cams=4):
+def get_static_test_detections(run=1, sigma_r=0, sigma_t=0, num_cams=4, cam_type='d435'):
 
     ########## Setu p cameras ############
     T_BC_01 = np.array([0.0, 0.01919744239968966, 0.9998157121216441, 0.077, -1.0, 0.0, 0.0, 0.28, 0.0, -0.9998157121216442, 0.019197442399689665, -0.06999999999999999, 0.0, 0.0, 0.0, 1.0]).reshape(4,4)
@@ -205,14 +205,15 @@ def get_static_test_detections(run=1, sigma_r=0, sigma_t=0, num_cams=4):
     T_BC_08 = np.array([-0.07500987988876373, -0.034584016329649164, 0.9965828935585749, 0.07672078798849649, -0.9969596158127689, 0.023743789411150146, -0.07421426347310038, 0.24999506647546407, -0.021096027055562884, -0.9991197016768858, -0.03625988642510408, -0.05000935206550797, 0.0, 0.0, 0.0, 1.0]).reshape(4,4)
     T_BCs = [T_BC_01, T_BC_04, T_BC_05, T_BC_06, T_BC_08]
     rover_nums = ['01', '04', '05', '06', '08']
-   
-    # Rs = [R0, R1, R2, R3]
-    # Ts = [R0.T @ T0, R1.T @ T1, R2.T @ T2, R3.T @ T3]
     
     fis = []
     for i, rover_num in zip(range(num_cams), rover_nums[:num_cams]):
+        if cam_type == 'd435':
+            bagfile = f'/home/masonbp/ford-project/data/static-20221216/centertrack_detections/run0{run}_RR{rover_num}.bag'
+        elif cam_type == 't265':
+            bagfile = f'/home/masonbp/ford-project/data/static-20221216/centertrack_detections/fisheye/run0{run}_RR{rover_num}.bag'
         fis.append(Detections(T_BCs[i],
-            f'/home/masonbp/ford-project/data/static-20221216/centertrack_detections/run0{run}_RR{rover_num}.bag', 
+            bagfile, 
             f'/RR{rover_num}/world',
             f'/RR{rover_num}/detections', 
             sigma_r=sigma_r, sigma_t=sigma_t))
