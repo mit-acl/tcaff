@@ -1,6 +1,9 @@
 # import torchreid feature extractor
 from torchreid.utils import FeatureExtractor
-from .detections import get_epfl_frame_info, get_static_test_detections
+if __name__ == '__main__':
+    from detections import get_epfl_frame_info, get_static_test_detections
+else:
+    from .detections import get_epfl_frame_info, get_static_test_detections
 import numpy as np
 from numpy.linalg import inv
 

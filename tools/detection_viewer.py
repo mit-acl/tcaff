@@ -6,8 +6,9 @@ import time
 
 import sys
 sys.path.append('..')
-from src.frontend.detections import get_epfl_frame_info, get_static_test_detections, GroundTruth
-GT = GroundTruth('/home/masonbp/ford-project/data/static-20221216/run01_filtered.bag', ['1', '2', '3'], 'RR01')
+sys.path.append('../src')
+from src.frontend.detections import get_epfl_frame_info, get_static_test_detections, get_dynamic_test_detections, GroundTruth
+GT = GroundTruth('/home/masonbp/ford-project/data/dynamic-20230206/run3_filtered.bag', ['1', '2', '4', '5'], 'RR01')
 
 def animate(i, start_frame, cams, bounds):
     minx, maxx, miny, maxy = bounds
@@ -22,7 +23,7 @@ def animate(i, start_frame, cams, bounds):
         for pose in cam.pos(t):
             x.append(pose[0])
             y.append(pose[1])
-        ax.plot([cam.cam_pos()[0]], cam.cam_pos()[1], 'o', color=colors[j], linewidth=3)
+        ax.plot([cam.cam_pos(t).item(0)], cam.cam_pos(t).item(1), 'o', color=colors[j], linewidth=3)
         ax.plot(x, y, 'x', color=colors[j], linewidth=3)
 
     # plot ground truth
@@ -30,7 +31,6 @@ def animate(i, start_frame, cams, bounds):
     for pos in GT.ped_positions(t)[1]:
         x.append(pos[0])
         y.append(pos[1])
-        print(pos.T)
     ax.plot(x, y, '^', color='black', linewidth=3)
 
     ax.set_xlim([minx,maxx])
@@ -39,25 +39,31 @@ def animate(i, start_frame, cams, bounds):
 start_frame = 40
 
 ########### Set up detections ############
-frame_infos = get_static_test_detections(run=1, sigma_r = 0*np.pi/180, num_cams=1, cam_type='t265')
+# frame_infos = get_static_test_detections(run=1, sigma_r = 0*np.pi/180, num_cams=1, cam_type='t265')
+frame_infos = get_dynamic_test_detections()
 num_cams = len(frame_infos)
 
-mins = [np.inf, np.inf]
-maxs = [-np.inf, -np.inf]
-for xy_idx in [0, 1]:
-    for cam_idx in range(num_cams):
-        mins[xy_idx] = min(mins[xy_idx], frame_infos[cam_idx].cam_pos()[xy_idx])
-        maxs[xy_idx] = max(maxs[xy_idx], frame_infos[cam_idx].cam_pos()[xy_idx])
-minx_v = mins[0] - (maxs[0]-mins[0])*.1
-maxx_v = maxs[0] + (maxs[0]-mins[0])*.1
-miny_v = mins[1] - (maxs[1]-mins[1])*.1
-maxy_v = maxs[1] + (maxs[1]-mins[1])*.1
+# mins = [np.inf, np.inf]
+# maxs = [-np.inf, -np.inf]
+# for xy_idx in [0, 1]:
+#     for cam_idx in range(num_cams):
+#         mins[xy_idx] = min(mins[xy_idx], frame_infos[cam_idx].cam_pos()[xy_idx])
+#         maxs[xy_idx] = max(maxs[xy_idx], frame_infos[cam_idx].cam_pos()[xy_idx])
+# minx_v = mins[0] - (maxs[0]-mins[0])*.1
+# maxx_v = maxs[0] + (maxs[0]-mins[0])*.1
+# miny_v = mins[1] - (maxs[1]-mins[1])*.1
+# maxy_v = maxs[1] + (maxs[1]-mins[1])*.1
 
+minx_v = -8
+maxx_v = 8
+miny_v = -8
+maxy_v = 8
 
 animate_lambda = lambda i : animate(i, start_frame, frame_infos, [minx_v, maxx_v, miny_v, maxy_v])
 
 fig, ax = plt.subplots()
+fig.set_dpi(240)
 
-ani = FuncAnimation(fig, animate_lambda, frames=frame_infos[0].num_frames-start_frame, interval=10, repeat=False)
+ani = FuncAnimation(fig, animate_lambda, frames=frame_infos[0].num_frames-start_frame, interval=1, repeat=False)
 
 plt.show()

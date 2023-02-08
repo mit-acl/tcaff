@@ -1,0 +1,3 @@
+[submodule "src/frontend/camera_calibration_mocap"]
+	path = src/frontend/camera_calibration_mocap
+	url = git@gitlab.com:mit-acl/lab/camera-calibration-mocap.git

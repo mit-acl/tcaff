@@ -3,6 +3,17 @@ import numpy as np
 from scipy.spatial.transform import Rotation as Rot
 from bagpy import bagreader
 import pandas as pd
+import gtsam
+import glob
+import yaml
+
+if __name__ == '__main__':
+    from camera_calibration_mocap.cam_calib_mocap import get_calibrator
+    import sys
+    sys.path.append('..')
+else:
+    from .camera_calibration_mocap.cam_calib_mocap import get_calibrator
+import config.data_params as PARAMS
 
 class Detections():
     
@@ -18,11 +29,11 @@ class Detections():
         object_lists = annot_df.detections.values.tolist()
         self.times = pd.DataFrame.to_numpy(annot_df.iloc[:,0:1]) + pd.DataFrame.to_numpy(annot_df.iloc[:,1:2])*1e-9
         pose_csv = b.message_by_topic(pose_topic)
-        pose_df = pd.read_csv(pose_csv, usecols=['Time', 'pose.position.x', 'pose.position.y', 'pose.position.z',
+        pose_df = pd.read_csv(pose_csv, usecols=['header.stamp.secs', 'header.stamp.nsecs', 'pose.position.x', 'pose.position.y', 'pose.position.z',
             'pose.orientation.x', 'pose.orientation.y', 'pose.orientation.z', 'pose.orientation.w'])
-        positions = pd.DataFrame.to_numpy(pose_df.iloc[:, 1:4])
-        orientations = pd.DataFrame.to_numpy(pose_df.iloc[:, 4:8])
-        pose_times = pose_df.iloc[:,0]
+        positions = pd.DataFrame.to_numpy(pose_df.iloc[:, 2:5])
+        orientations = pd.DataFrame.to_numpy(pose_df.iloc[:, 5:9])
+        pose_times = pd.DataFrame.to_numpy(pose_df.iloc[:,0:1]) + pd.DataFrame.to_numpy(pose_df.iloc[:,1:2])*1e-9
         
         self.num_frames = len(object_lists)
         
@@ -56,7 +67,7 @@ class Detections():
                 self.T = T
             objects = objects.split('centertrack_id: ')
             if objects[0] == '[]':
-                self.data.append({'time': self.times.item(i), 'bbox2d': [], 'pos3d': []})
+                self.data.append({'time': self.times.item(i), 'bbox2d': [], 'pos3d': [], 'T_WC': T_WC})
                 continue
             bbox2d = []
             pos3d = []
@@ -71,10 +82,12 @@ class Detections():
                 pos3d_new = np.array(pos3d_new).reshape((3,1))
                 pos3d_new = self.R_offset @ R @ pos3d_new + T + self.T_offset
                 pos3d.append(pos3d_new)
-            self.data.append({'time': self.times.item(i), 'bbox2d': bbox2d, 'pos3d': pos3d})
+            self.data.append({'time': self.times.item(i), 'bbox2d': bbox2d, 'pos3d': pos3d, 'T_WC': T_WC})
     
-    def cam_pos(self):
-        return self.T
+    def cam_pos(self, time):
+        idx = self.idx(time)
+        # if abs(self.times[idx] - time) < self.time_diff_allowed:
+        return self.data[idx]['T_WC'][:3,3].reshape((3,1))
             
     def at(self, time):
         idx = self.idx(time)
@@ -131,14 +144,14 @@ class GroundTruth():
                 else:
                     topic = f'/PED{ped}/world'
                 ped_csv = b.message_by_topic(topic)
-                ped_df = pd.read_csv(ped_csv, usecols=['Time', 
+                ped_df = pd.read_csv(ped_csv, usecols=['header.stamp.secs', 'header.stamp.nsecs', 
                     'pose.position.x', 'pose.position.y', 'pose.position.z',
                     'pose.orientation.x', 'pose.orientation.y', 'pose.orientation.z', 
                     'pose.orientation.w'])
                 
-                self.positions[ped] = pd.DataFrame.to_numpy(ped_df.iloc[:, 1:4])
-                self.orientations[ped] = pd.DataFrame.to_numpy(ped_df.iloc[:, 4:8])
-                self.times[ped] = ped_df.iloc[:,0]
+                self.positions[ped] = pd.DataFrame.to_numpy(ped_df.iloc[:, 2:5])
+                self.orientations[ped] = pd.DataFrame.to_numpy(ped_df.iloc[:, 5:9])
+                self.times[ped] = pd.DataFrame.to_numpy(ped_df.iloc[:,0:1]) + pd.DataFrame.to_numpy(ped_df.iloc[:,1:2])*1e-9
                 if ped != reference_cam:
                     self.peds[ped] = True
             except:
@@ -197,7 +210,7 @@ def get_epfl_frame_info(sigma_r=0, sigma_t=0):
 
 def get_static_test_detections(run=1, sigma_r=0, sigma_t=0, num_cams=4, cam_type='d435'):
 
-    ########## Setu p cameras ############
+    ########## Set up cameras ############
     T_BC_01 = np.array([0.0, 0.01919744239968966, 0.9998157121216441, 0.077, -1.0, 0.0, 0.0, 0.28, 0.0, -0.9998157121216442, 0.019197442399689665, -0.06999999999999999, 0.0, 0.0, 0.0, 1.0]).reshape(4,4)
     T_BC_04 = np.array([0.022684654329523025, -0.02268573610666359, 0.9994852494335512, 0.077, -0.9997426373806936, -0.00025889700461809384, 0.022684619799232468, 0.03, -0.0002558535612070688, -0.9997426120505415, -0.02268577063525499, -0.09, 0.0, 0.0, 0.0, 1.0]).reshape(4,4)
     T_BC_05 = np.array([-0.0174226746835367, -0.05495036561082756, 0.9983370711969513, 0.07769690336094144, -0.9998476997771804, -5.4828602412673115e-05, -0.017452055583951746, 0.32999512637861894, 0.0010137342613491236, -0.998489085725558, -0.05494104139699781, -0.07004079327681155, 0.0, 0.0, 0.0, 1.0]).reshape(4,4)
@@ -220,6 +233,50 @@ def get_static_test_detections(run=1, sigma_r=0, sigma_t=0, num_cams=4, cam_type
         
     return fis
 
+def get_dynamic_test_detections(run=3, sigma_r=0.0, sigma_t=0.0, num_cams=4, cam_type='t265'):
+
+    rover_names = ['RR01', 'RR04', 'RR06', 'RR08']
+    tag_size = 0.1655
+    T_tag_fix = gtsam.Pose3(gtsam.Rot3.Rz(-np.pi/2),np.array([0,0,0])).matrix()
+    detections = []
+    calib_file_exists = os.path.isfile(PARAMS.CAMERA_CALIB_FILE)
+
+    if not calib_file_exists:
+        with open(PARAMS.CAMERA_CALIB_FILE, 'w') as f:
+            for rover in rover_names:
+                calibrator = get_calibrator(cam_name=cam_type)
+                if cam_type == 't265':
+                    cam_topic = f'/t265/fisheye1/image_raw/compressed'
+                elif cam_type == 'd435':
+                    cam_topic = f'/d435/color/image_raw/compressed'
+                bagfiles = glob.glob(f'{PARAMS.DYNAMIC_DATA_DIR}/calib/{rover}/*.bag')
+                T_BC = calibrator.find_T_body_camera(
+                    bagfiles=bagfiles,
+                    camera_topic=f'/{rover}{cam_topic}',
+                    tag_pose_topic='/tag_box/world',
+                    camera_pose_topic=f'/{rover}/world',
+                    tag_size=tag_size,
+                    T_tag_fix=T_tag_fix, 
+                )
+                print(f'{rover}: [', file=f, end='')
+                for val in T_BC.reshape(-1).tolist():
+                    print(f'{val}, ', file=f, end='')
+                print(f']', file=f)
+    
+    with open(PARAMS.CAMERA_CALIB_FILE, 'r') as f:
+        T_BCs = yaml.full_load(f)
+        for rover in rover_names:
+            bagfile = f'{PARAMS.DYNAMIC_DATA_DIR}/centertrack_detections/{cam_type}/run{run}_{rover}.bag'
+
+            detections.append(Detections(
+                np.array(T_BCs[rover]).reshape((4, 4)),
+                bagfile,
+                f'/{rover}/world',
+                f'/{rover}/detections',
+                sigma_r=sigma_r, sigma_t=sigma_t
+            ))
+    return detections
+
 if __name__ == '__main__':
         
-    detections = get_static_test_detections()
+    detections = get_dynamic_test_detections()
