@@ -4,13 +4,7 @@ from scipy.spatial.transform import Rotation as Rot
 
 from config import tracker_params as TRACK_PARAM
 from mot.observation_msg import ObservationMsg
-
-def transform(T, vec):
-    unshaped_vec = vec.reshape(-1)
-    resized_vec = np.concatenate(
-        [unshaped_vec, np.ones((T.shape[0] - unshaped_vec.shape[0]))]).reshape((-1, 1))
-    transformed = T @ resized_vec
-    return transformed.reshape(-1)[:unshaped_vec.shape[0]].reshape(vec.shape)   
+from utils.transform import transform  
 
 class FrameRealigner():
     

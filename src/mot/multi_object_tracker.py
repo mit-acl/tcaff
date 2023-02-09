@@ -10,7 +10,7 @@ from realign.frame_realigner import FrameRealigner
 
 class MultiObjectTracker():
 
-    def __init__(self, camera_id, connected_cams, params, T):
+    def __init__(self, camera_id, connected_cams, params):
         self.realigner = FrameRealigner(
             cam_id=camera_id,
             connected_cams=connected_cams,
@@ -34,7 +34,6 @@ class MultiObjectTracker():
         self.unassociated_obs = []
         self.inconsistencies = 0
         self.groups_by_id = []
-        self.T_local_global = T
         self.recent_detection_list = []
         for i in range(50):
             self.recent_detection_list.append(None)
