@@ -21,11 +21,15 @@ class MultiObjectTracker():
         self.Tau_LDA = params.Tau_LDA
         self.Tau_GDA = params.Tau_GDA
         self.Tau_grown = 1
+        self.Tau_cone = .5
+        
         self.alpha = params.alpha
         self.kappa = params.kappa
         self.trackers = []
         self.new_trackers = []
         self.old_trackers = []
+        self.cones = []
+        self.new_cones = []
         self.next_available_id = 0
         self.n_meas_to_init_tracker = params.n_meas_to_init_tracker
         
@@ -120,6 +124,69 @@ class MultiObjectTracker():
 
         for tracker in self.trackers + self.new_trackers:
             tracker.predict()
+            
+    def cone_update(self, Zs):
+        for i in range(len(Zs)):
+            Zs[i] = np.concatenate([Zs[i][:2,:].reshape(-1), [.1, .15]]).reshape((4, 1))
+        all_cones = self.cones + self.new_cones
+        geometry_scores = np.zeros((len(all_cones), len(Zs)))
+        large_num = 1000
+        for i, tracker in enumerate(all_cones):
+            Hx_xy = (tracker.H @ tracker.state)[0:2,:]
+            for j, Z in enumerate(Zs):
+                z_xy = Z[0:2,:]
+                # Mahalanobis distance
+                d = np.sqrt((z_xy - Hx_xy).T @ np.linalg.inv(tracker.V) @ (z_xy - Hx_xy)).item(0)
+                
+                # Geometry similarity value
+                s_d = 1/self.alpha*d if d < self.Tau_cone else large_num
+                geometry_scores[i,j] = s_d
+
+        unassociated = []
+        product_scores = geometry_scores 
+        # augment cost to add option for no associations
+        hungarian_cost = np.concatenate([
+            np.concatenate([product_scores, np.ones(product_scores.shape)], axis=1),
+            np.ones((product_scores.shape[0], 2*product_scores.shape[1]))], axis=0)
+        row_ind, col_ind = linear_sum_assignment(hungarian_cost)
+        for t_idx, z_idx in zip(row_ind, col_ind):
+            # tracker and measurement associated together
+            if t_idx < len(all_cones) and z_idx < len(Zs):
+                assert product_scores[t_idx,z_idx] < 1
+                is_current_tracker = t_idx < len(self.cones)
+                all_cones[t_idx].update(Zs[z_idx])        
+            # unassociated measurement
+            elif z_idx < len(Zs):
+                unassociated.append(z_idx)
+            # unassociated tracker or augmented part of matrix
+            else:
+                continue
+            
+        # if there are no trackers, hungarian matrix will be empty, handle separately
+        if len(all_cones) == 0:
+            for z_idx in range(len(Zs)):
+                unassociated.append(z_idx)
+
+        for cone in self.new_cones:
+            if cone.frames_seen >= self.n_meas_to_init_tracker:
+                self.cones.append(cone)
+                self.new_cones.remove(cone)
+            elif not cone.seen:
+                self.new_cones.remove(cone)
+
+        for z_idx in unassociated:
+            new_cone = Tracker(self.camera_id, self.next_available_id, Zs[z_idx], feature_vec=[], keep_history=False)
+            new_cone.A = np.eye(6); new_cone.A[4:,4:] = np.zeros((2,2))
+            new_cone.Q = np.eye(6)
+            new_cone.update(Zs[z_idx])
+            new_cone.seen_by_this_camera = True
+            self.new_cones.append(new_cone)
+            self.next_available_id += 1
+
+        for cone in self.cones + self.new_cones:
+            cone.predict()
+            cone.correction()
+            cone.cycle()
 
     def dkf(self):  
         for tracker in self.trackers + self.new_trackers:

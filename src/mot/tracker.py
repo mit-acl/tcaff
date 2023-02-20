@@ -7,7 +7,7 @@ from config import tracker_params as PARAM
 
 class Tracker():
 
-    def __init__(self, camera_id, tracker_id, estimated_state, feature_vec): #, Ts=1):
+    def __init__(self, camera_id, tracker_id, estimated_state, feature_vec, keep_history=True): #, Ts=1):
         self.A = PARAM.A
         # TODO: Something about my Ts seems to be off, changing it significantly changed results
         self.H = PARAM.H
@@ -23,14 +23,16 @@ class Tracker():
         self._a = [feature_vec] if not isinstance(feature_vec, list) else feature_vec
         self.include_appearance = False
         
-        self.rec_det_max_len = PARAM.n_recent_dets
-        self.recent_detections = dict()
-        self.historical_states = np.zeros((6, self.rec_det_max_len)) * np.nan
-        self.historical_states[:,0] = self._state.reshape((-1))
-        self.historical_covariance = np.zeros((6, 6*self.rec_det_max_len)) * np.nan
-        self.historical_covariance[:,0:6] = self.P
-        self.lifespan = 0    
-        self.dead_cnt = -1    
+        self.keep_history = keep_history
+        if self.keep_history:
+            self.rec_det_max_len = PARAM.n_recent_dets
+            self.recent_detections = dict()
+            self.historical_states = np.zeros((6, self.rec_det_max_len)) * np.nan
+            self.historical_states[:,0] = self._state.reshape((-1))
+            self.historical_covariance = np.zeros((6, 6*self.rec_det_max_len)) * np.nan
+            self.historical_covariance[:,0:6] = self.P
+            self.lifespan = 0    
+            self.dead_cnt = -1    
 
         self.frames_seen = 1
         self._ell = 0
@@ -159,10 +161,11 @@ class Tracker():
 
     def cycle(self, historical_only=False):
         
-        self.historical_states = np.roll(self.historical_states, shift=1, axis=1)
-        self.historical_states[:,0] = self._state.reshape((-1))
-        self.historical_covariance = np.roll(self.historical_covariance, shift=6, axis=1)
-        self.historical_covariance[:,0:6] = self.P
+        if self.keep_history:
+            self.historical_states = np.roll(self.historical_states, shift=1, axis=1)
+            self.historical_states[:,0] = self._state.reshape((-1))
+            self.historical_covariance = np.roll(self.historical_covariance, shift=6, axis=1)
+            self.historical_covariance[:,0:6] = self.P
         
         if historical_only:
             return
@@ -177,6 +180,8 @@ class Tracker():
         self._seen = False
         self._ell += 1
         
+        if not self.keep_history:
+            return
         self.lifespan = min(self.lifespan + 1, self.rec_det_max_len - 1)
         self.dead_cnt += 1 if self.dead_cnt >= 0 else 0
         

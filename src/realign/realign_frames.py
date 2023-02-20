@@ -5,6 +5,9 @@ if o3d.__DEVICE_API__ == 'cuda':
 else:
     import open3d.cpu.pybind.t.pipelines.registration as treg
 
+# STARTING A LIST OF MAGIC NUMBERS HERE
+NUM_CONES_REQ = 7
+
 def detections2pointcloud(detections, org_by_tracks):
     dets_cp = []
     if org_by_tracks:
@@ -22,7 +25,7 @@ def realign_frames(detections1, detections2, initial_guess=np.eye(4)):
     # Select the `Estimation Method`, and `Robust Kernel` (for outlier-rejection).
     estimation = treg.TransformationEstimationPointToPoint()
     # Search distance for Nearest Neighbour Search [Hybrid-Search is used].
-    max_correspondence_distance = 3.0
+    max_correspondence_distance = .5
 
     # Initial alignment or source to target transform.
     init_source_to_target = trans_init
@@ -41,3 +44,16 @@ def realign_frames(detections1, detections2, initial_guess=np.eye(4)):
                                     init_source_to_target, estimation, criteria,
                                     voxel_size)
     return reg_point_to_point.transformation.numpy()
+
+def realign_cones(cones1, cones2, T_current):
+    cone1_states = []
+    cone2_states = []
+    for cone in cones1:
+        cone1_states.append(cone.state[:2, :].reshape(-1).tolist() + [0])
+    for cone in cones2:
+        cone2_states.append(cone.state[:2, :].reshape(-1).tolist() + [0])
+    if len(cone1_states) < NUM_CONES_REQ or len(cone2_states) < NUM_CONES_REQ: 
+        return T_current
+    cone1_ptcld = o3d.t.geometry.PointCloud(np.array(cone1_states))
+    cone2_ptcld = o3d.t.geometry.PointCloud(np.array(cone2_states))
+    return realign_frames(cone1_ptcld, cone2_ptcld, T_current)

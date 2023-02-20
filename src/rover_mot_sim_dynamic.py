@@ -13,7 +13,7 @@ from frontend.rover_mot_frontend import RoverMotFrontend
 def get_videos(root, run, first_frame, nums=['01', '04', '06', '08'], num_cams=4):
     caps = []
     for i in range(num_cams):
-        videopath = root /  f"videos/run{run}_RR{nums[i]}.avi"
+        videopath = root /  f"videos/t265/run{run}_RR{nums[i]}.avi"
         print(videopath)
         caps.append(cv.VideoCapture(videopath.as_posix()))
     for cap in caps:
@@ -25,11 +25,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Annotate video sequence with ground truth')
     parser.add_argument('-r', '--root',
             type=str,
-            default='/home/masonbp/ford-project/data/dynamic-20230206',
+            default='/home/masonbp/ford-project/data/dynamic-final',
             help='Dataset root directory')
     parser.add_argument('--run',
             type=int,
-            default=3,
+            default=1,
             help='Rover test run number')  
     parser.add_argument('--viewer',
             action='store_true',
@@ -58,22 +58,24 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     root = pathlib.Path(args.root)
-    if args.run == 3:
-        ped_bag = 'run3_filtered.bag'
-        detection_bag = f'centertrack_detections/{args.cam_type}/run3_{{}}.bag'
-        num_peds = 4
-        FIRST_FRAME = 600
-        LAST_FRAME = 8000
-        START_METRIC_FRAME = 600
+    if args.run == 1:
+        ped_bag = 'run1.bag'
+        # detection_bag = f'centertrack_detections/{args.cam_type}_0.45/run3_{{}}.bag'
+        detection_bag = f'centertrack_detections/0.5_0.1/run1_{{}}.bag'
+        FIRST_FRAME = 0
+        LAST_FRAME = 7650
+        START_METRIC_FRAME = 0
     ped_bag = str(root / ped_bag)
     detection_bag = str(root / detection_bag)
     if args.wls_only:
         PARAMS.realign_algorithm = PARAMS.RealignAlgorithm.REALIGN_WLS
     num_cams = args.num_cams
+    PARAMS.n_meas_to_init_tracker = 3
+    PARAMS.kappa = 4
 
     sim = RoverMotFrontend(
         ped_bag=ped_bag,
-        realign_algorithm=PARAMS.realign_algorithm,
+        mot_params=PARAMS,
         detection_bag=detection_bag,
         rovers=['RR01', 'RR04', 'RR06', 'RR08'][:num_cams],
         rover_pose_topic='/world' if not args.use_odom else '/t265_registered/world',
@@ -82,6 +84,9 @@ if __name__ == '__main__':
         noise=(0.0, 0.0),
         viewer=args.viewer
     )
+    sim.TRIGGER_AUTO_CYCLE_TIME = .1
+    # if args.run == 3:
+    #     sim.start_time = 1675727098.0
 
     if args.quiet:
         frame_range = range(FIRST_FRAME, LAST_FRAME)
@@ -95,7 +100,7 @@ if __name__ == '__main__':
     last_printed_metrics = sim.frame_time
     for framenum in frame_range:
 
-        realign = args.realign and framenum > (FIRST_FRAME + 10*30) and (framenum - FIRST_FRAME) % (10*30) == 0
+        realign = args.realign and (framenum - FIRST_FRAME) % (5*30) == 0
         sim.update(framenum, run_metrics=(framenum > START_METRIC_FRAME), realign=realign)
 
         if not args.quiet and args.metric_frequency != 0 and \

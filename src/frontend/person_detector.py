@@ -1,9 +1,9 @@
 # import torchreid feature extractor
 from torchreid.utils import FeatureExtractor
 if __name__ == '__main__':
-    from detections import get_rover_detections
+    from detections import get_rover_detections, get_cone_detections
 else:
-    from .detections import get_rover_detections
+    from .detections import get_rover_detections, get_cone_detections
 import numpy as np
 from numpy.linalg import inv
 
@@ -21,10 +21,12 @@ class PersonDetector():
         # self.detections = get_epfl_frame_info(sigma_r=sigma_r, sigma_t=sigma_t)
         self.detections = get_rover_detections(bagfile=bagfile, sigma_r=sigma_r, sigma_t=sigma_t, 
             rovers=cams, cam_type=cam_type, rover_pose_topic=cam_pose_topic)
+        self.cone_detections = get_cone_detections(rovers=cams)
         self.x_max = 1920
         self.y_max = 1080
         self.start_time = self.detections[0].time(0)
         self.num_cams = len(cams)
+        self.raw_cone_detections = [[], [], [], []]
 
     def get_person_boxes(self, im, cam_num, frame_time):
         positions = []
@@ -35,6 +37,13 @@ class PersonDetector():
             boxes.append(b)
             features.append(self._get_box_features(b, im))
         return positions, boxes, features
+    
+    def get_cones(self, cam_num, framenum, frame_time):
+        T_WC = self.detections[cam_num].T_WC(frame_time, T_BC=self.cone_detections[cam_num].T_BC, true_pose=True)
+        dets = self.cone_detections[cam_num].detection3d(framenum, T_WC)
+        for det in dets:
+            self.raw_cone_detections[cam_num].append(det.reshape(-1).tolist())
+        return dets
     
     def _get_box_features(self, box, im):
         x0, y0, x1, y1 = box

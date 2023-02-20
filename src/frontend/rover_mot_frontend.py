@@ -7,21 +7,21 @@ from frontend.detections import GroundTruth
 from mot.multi_object_tracker import MultiObjectTracker
 from metrics.metric_evaluator import MetricEvaluator
 from metrics.inconsistency_counter import InconsistencyCounter
-import config.rover_mot_params as PARAMS
+from realign.realign_frames import realign_cones
+from utils.transform import transform, pt_is_seeable
 
 class RoverMotFrontend():
     
-    def __init__(self, detection_bag, ped_bag, realign_algorithm, rovers, rover_pose_topic, cam_type, vids, noise, viewer=False):
+    def __init__(self, detection_bag, ped_bag, rovers, rover_pose_topic, cam_type, vids, noise, mot_params, viewer=False):
         self.viewer = viewer
         self.GT = GroundTruth(bagfile=ped_bag)
-        self.realign_algorithm = realign_algorithm
         self.vids = vids
         self.mots = []
         self.mes = []
         self.detector = PersonDetector(bagfile=detection_bag, sigma_t=noise[0], sigma_r=noise[1], cams=rovers, cam_type=cam_type, cam_pose_topic=rover_pose_topic)
         for i, rover in enumerate(rovers):
             connected_cams = [*range(len(rovers))]; connected_cams.remove(i)
-            self.mots.append(MultiObjectTracker(i, connected_cams=connected_cams, params=PARAMS))
+            self.mots.append(MultiObjectTracker(i, connected_cams=connected_cams, params=mot_params))
             self.mes.append(MetricEvaluator())
         
         self.inconsistencies = 0
@@ -47,7 +47,35 @@ class RoverMotFrontend():
         
         # Frame Realignment
         if realign:
-            for mot in self.mots: mot.frame_realign()
+            # for mot in self.mots: mot.frame_realign()
+            for mot1 in self.mots:
+                for mot2 in self.mots:
+                    if mot1 == mot2: continue
+                    T_current = mot1.realigner.transforms[mot2.camera_id]
+                    T_new = realign_cones(mot1.cones, mot2.cones, T_current)
+                    # print(T_new)
+                    # print(mot1.realigner.T_mag(T_new @ np.linalg.inv(T_current)))
+                    if mot1.realigner.T_mag(T_new @ np.linalg.inv(T_current)) < 1:
+                        mot1.realigner.transforms[mot2.camera_id] = T_new
+            for mot in self.mots:
+                mot.cones = []
+                mot.new_cones = []
+            
+        for i, mot in enumerate(self.mots):
+            cones = self.detector.get_cones(i, framenum, self.frame_time)
+            mot.cone_update(cones)
+        
+        # if self.frame_time > self.detector.start_time + 600/30 + 10:
+        #     print('cones = [[], [], [], []]')
+        #     for i, mot in enumerate(self.mots):
+        #         print(f'cones[{i}] = np.array([')
+        #         # for cone in mot.cones:                
+        #         #     print(f'[{cone.state.item(0)}, {cone.state.item(1)}],')
+        #         for cone in self.detector.raw_cone_detections[i]:
+        #             print(f'\t[{cone[0]}, {cone[1]}],')
+        #         print('])')
+        #     exit(0)
+            
             
         # Continues to next frame when robots have new detections
         # if not detector.times_different(self.frame_time, last_frame_time) and abs(self.frame_time - last_frame_time) < TRIGGER_AUTO_CYCLE_TIME:
@@ -93,18 +121,23 @@ class RoverMotFrontend():
         combined = self.topview.copy()
 
         if self.viewer:
-            for i, mot in enumerate(self.mots):
+            for i, (mot, det) in enumerate(zip(self.mots, self.detector.detections)):
 
                 Xs, colors = mot.get_trackers()   
 
                 for X, color in zip(Xs, colors):
-                    x, y, w, h, _, _ = X.reshape(-1).tolist()
+                    # correct state for local error
+                    X_corrected = transform(det.T_WC(self.frame_time) @ np.linalg.inv(det.T_WC(self.frame_time, true_pose=False)), X[0:2,:])
+                    x, y = X_corrected.reshape(-1).tolist()
+                    w = X.item(2)
                     x, y = x*self.topview_size/20 + self.topview_size/2, y*self.topview_size/20 + self.topview_size/2
                     cv.circle(combined, (int(x),int(y)), int(2*w/3), color, 4)
         
         ped_ids, peds = self.GT.ped_positions(self.frame_time)
         gt_dict = dict()
         for ped_id, ped_pos in zip(ped_ids, peds):
+            if not self.in_view(ped_pos):
+                continue
             gt_dict[ped_id] = ped_pos[0:2]
             if self.viewer:
                 pt = (int(ped_pos[0]*self.topview_size/20 + self.topview_size/2), int(ped_pos[1]*self.topview_size/20 + self.topview_size/2))
@@ -124,3 +157,21 @@ class RoverMotFrontend():
         c = np.array(plt.get_cmap('tab10').colors[i])
         c = (c * 255).astype(int)
         return tuple(v.item() for v in c[::-1])
+    
+    def in_view(self, ped_pos):
+        ped_pos[2] /= 2 # middle of person instead of top
+        cx = 425.5404052734375
+        cy = 400.3540954589844
+        fx = 285.72650146484375
+        fy = 285.77301025390625
+        K = np.array([[fx, 0.0, cx],
+                    [0.0, fy, cy],
+                    [0.0, 0.0, 1.0]])
+        D = np.array([-0.006605582777410746, 0.04240882024168968, -0.04068116843700409, 0.007674722000956535])
+        width = 800
+        height = 848
+        
+        for rover in self.detector.detections:
+            if pt_is_seeable(K, rover.T_WC(self.frame_time), width, height, ped_pos):
+                return True
+        return False
