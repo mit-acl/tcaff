@@ -13,6 +13,8 @@ class Tracker():
         self.H = PARAM.H
         self.Q = PARAM.Q
         self.R = PARAM.R
+        # if camera_id % 4 == 0:
+        #     self.R = PARAM.R * 10000
         self.P = PARAM.P
         self.V = self.P[0:2,0:2] + self.R[0:2,0:2] # Pxy + Rxy
 
@@ -86,12 +88,13 @@ class Tracker():
 
     def predict(self):
         xhat = self._state
-        self.xbar = dict(); self.u = dict(); self.U = dict()
+        self.xbar = dict(); self.zs = dict(); self.Rs = dict(); self.Hs = dict()
         self.xbar[self._id[0]] = self.A @ xhat
         if self._seen:
             z = self._measurement
-            self.u[self._id[0]] = self.H.T @ inv(self.R) @ z
-            self.U[self._id[0]] = self.H.T @ inv(self.R) @ self.H
+            self.zs[self._id[0]] = np.copy(z)
+            self.Rs[self._id[0]] = np.copy(self.R)
+            self.Hs[self._id[0]] = np.copy(self.H)
 
     def observation_update(self, observation_msg):
         for mid in observation_msg.mapped_ids:
@@ -102,8 +105,9 @@ class Tracker():
         self.xbar[observation_msg.tracker_id[0]] = observation_msg.xbar
         self._ell = min(self._ell, observation_msg.ell)
         # if observation_msg.has_measurement_info:
-        self.u[observation_msg.tracker_id[0]] = observation_msg.u
-        self.U[observation_msg.tracker_id[0]] = observation_msg.U
+        self.zs[observation_msg.tracker_id[0]] = observation_msg.z
+        self.Rs[observation_msg.tracker_id[0]] = observation_msg.R
+        self.Hs[observation_msg.tracker_id[0]] = observation_msg.H
         if observation_msg.has_appearance_info:
             for a in observation_msg.a:
                 self._a.append(a)
@@ -126,22 +130,27 @@ class Tracker():
                 ell=deepcopy(self._ell),
             )
         if self._seen:
-            u = np.copy(self.u[self._id[0]])
-            U = np.copy(self.U[self._id[0]])
-            obs_msg.add_measurement(u, U)
+            z = np.copy(self._measurement)
+            R = np.copy(self.R)
+            H = np.copy(self.H)
+            obs_msg.add_measurement(z, R, H)
         if self.include_appearance:
             self.include_appearance = False
             obs_msg.add_appearance(deepcopy(self._a))
         return obs_msg
 
     def correction(self):
-        if len(self.u) == 0:
+        if len(self.zs) == 0:
             return
         y = np.zeros((6,1))
         S = np.zeros((6,6))
-        for _, u in self.u.items():
+        for cam in self.zs:
+            z = self.zs[cam]
+            H = self.Hs[cam]
+            R = self.Rs[cam]
+            u = H.T @ inv(R) @ z
+            U = H.T @ inv(R) @ H
             y += u
-        for _, U in self.U.items():
             S += U
 
         M = inv(inv(self.P) + S)
@@ -187,22 +196,21 @@ class Tracker():
         
         # if self.lifespan < 6:
         #     return
-        for cam_id in self.u:
+        for cam_id in self.zs:
             if cam_id not in self.recent_detections:
                 self.recent_detections[cam_id] = np.zeros((self.rec_det_max_len, 4)) * np.nan
         for cam_id in self.recent_detections:
             self.recent_detections[cam_id] = np.roll(self.recent_detections[cam_id], shift=1, axis=0)
-            if cam_id not in self.u:
+            if cam_id not in self.zs:
                 self.recent_detections[cam_id][0, :] = np.zeros(4) * np.nan
             else:
-                # TODO: Assuming H is identity matrix (or 1s along diag)
-                z = PARAM.R @ self.u[cam_id][0:4,:]
+                z = self.zs[cam_id][0:4,:]
                 self.recent_detections[cam_id][0, 0:3] = np.concatenate([z[0:2, :].reshape(-1), [0]])
                 self.recent_detections[cam_id][0, 3] = np.linalg.norm(self._state[0:2,:] - z[0:2,:])
         
     def died(self):
         self.dead_cnt = 0
-        self.xbar = dict(); self.u = dict(); self.U = dict()
+        self.xbar = dict(); self.zs = dict(); self.Rs = dict(); self.Hs = dict()
         
     def include_appearance_in_obs(self):
         self.include_appearance = True

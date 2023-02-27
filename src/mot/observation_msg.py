@@ -5,8 +5,9 @@ class ObservationMsg():
         self.mapped_ids = mapped_ids
         self.xbar = xbar
         self.ell = ell
-        self.u = None
-        self.U = None
+        self.z = None
+        self.R = None
+        self.H = None
         self.a = None
         self.has_measurement_info = False
         self.has_appearance_info = False
@@ -15,10 +16,11 @@ class ObservationMsg():
         self.has_appearance_info = True
         self.a = a
         
-    def add_measurement(self, u, U):
+    def add_measurement(self, z, R, H):
         self.has_measurement_info = True
-        self.u = u
-        self.U = U
+        self.z = z
+        self.R = R
+        self.H = H
         
     def __str__(self):
         return f'observation from: {self.tracker_id}'

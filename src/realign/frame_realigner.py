@@ -92,7 +92,6 @@ class FrameRealigner():
         self.new_transforms = dict()
         
     def transform_obs(self, obs):
-        # TODO: Right now I am assuming H and R are the same in each tracker!
         obs_cam = obs.tracker_id[0]
         if obs_cam not in self.transforms:
             return obs
@@ -101,11 +100,11 @@ class FrameRealigner():
         
         # Extract z and correct
         # TODO: Assuming H is identity matrix (or 1s along diag)
-        if obs.u is not None:
-            z = TRACK_PARAM.R @ obs.u[0:4,:]
+        if obs.z is not None:
+            z = obs.z
             p_meas = np.concatenate([z[0:2,:], [[0.], [1.]]], axis=0)
             p_meas_corrected = (self.transforms[obs_cam] @ p_meas)[0:2,:]
-            obs.u = TRACK_PARAM.H.T @ inv(TRACK_PARAM.R) @ np.concatenate([p_meas_corrected, z[2:]], axis=0)
+            obs.z = np.concatenate([p_meas_corrected, z[2:]], axis=0)
             
         # Extract xbar and correct
         pos = np.concatenate([obs.xbar[0:2,:], [[0], [1]]], axis=0)

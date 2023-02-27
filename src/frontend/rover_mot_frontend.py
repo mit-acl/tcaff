@@ -13,6 +13,7 @@ from realign.realign_frames import realign_cones, recently_weighted_realign
 from utils.transform import transform, pt_is_seeable, T_mag
 from utils.debug_help import *
 
+T_MAG_STATIC_OBJ_REALIGN_THRESH = 1.5
 
 class RoverMotFrontend():
     
@@ -79,7 +80,7 @@ class RoverMotFrontend():
                     T_new = realign_cones(mot1.cones, mot2.cones, T_current)
                     # print(T_new)
                     # print(mot1.realigner.T_mag(T_new @ np.linalg.inv(T_current)))
-                    if mot1.realigner.T_mag(T_new @ np.linalg.inv(T_current)) < 1.5: #and self.get_filtered_T_mag(T_new @ np.linalg.inv(T_current), 'psi') < 8:
+                    if mot1.realigner.T_mag(T_new @ np.linalg.inv(T_current)) < T_MAG_STATIC_OBJ_REALIGN_THRESH: #and self.get_filtered_T_mag(T_new @ np.linalg.inv(T_current), 'psi') < 8:
                     # if True:
                         # print(T_new)
                         # print(self.detector.get_T_obj2_obj1(i, 'l515', j, 'l515', self.frame_time))
