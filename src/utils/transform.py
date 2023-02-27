@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.spatial.transform import Rotation as Rot
 
 def transform(T, vec):
     unshaped_vec = vec.reshape(-1)
@@ -47,3 +48,11 @@ def pt_is_seeable(K, T_WC, width, height, pt):
         l1_check = lambda x : x.item(1) <= l1_slope * x.item(0) + l1_intrcpt
         
     return l0_check(pt) and l1_check(pt)
+
+# gives scalar value to magnitude of translation
+def T_mag(T, deg2m):
+    R = Rot.from_matrix(T[0:3, 0:3])
+    t = T[0:2, 3]
+    rot_mag = R.as_euler('xyz', degrees=True)[2] / deg2m
+    t_mag = np.linalg.norm(t)
+    return np.abs(rot_mag) + np.abs(t_mag)

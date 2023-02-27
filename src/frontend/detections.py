@@ -1,5 +1,6 @@
 import os
 import numpy as np
+from numpy.linalg import inv
 from scipy.spatial.transform import Rotation as Rot
 from bagpy import bagreader
 import pandas as pd
@@ -27,7 +28,7 @@ def bag2poses(bagfile, topic):
 
 class Detections():
     
-    def __init__(self, T_BC, bagfile, pose_topic, detection_topic, sigma_r=0, sigma_t=0): 
+    def __init__(self, T_BC, bagfile, pose_topic, detection_topic, register_time, sigma_r=0, sigma_t=0): 
         self.data = []
         self.time_diff_allowed = .4 # TODO: tunable parameter...?
 
@@ -55,13 +56,22 @@ class Detections():
             t_offset = np.array([np.random.normal(0, sigma_t/np.sqrt(2)), np.random.normal(0, sigma_t/np.sqrt(2)), 0.0]).reshape(-1)
             self.T_offset[:3, 3] = t_offset
         self.T_BC = T_BC
+        self.T_registered = None
         
         # Iterate across each frame
+        start_time = self.times.item(0)
         for i, objects in enumerate(object_lists):
             T_WB_bel = self.find_T_WB(self.times.item(i), pose_times_bel, positions_bel, orientations_bel)
             T_WB_true = self.find_T_WB(self.times.item(i), pose_times_true, positions_true, orientations_true)
             if T_WB_bel is None or T_WB_true is None:
                 break
+            if self.times.item(i) - start_time < register_time:
+                T_WB_bel = T_WB_true
+            elif self.T_registered is None:
+                self.T_registered = T_WB_true @ inv(T_WB_bel)
+                T_WB_bel = T_WB_true
+            else:
+                T_WB_bel = self.T_registered @ T_WB_bel
             T_WC_bel = T_WB_bel @ T_BC
             # Apply offset (a little weird, but I think this is right as opposed to T_offset @ T_WC_bel)
             T_WC_bel[0:3, 0:3] = self.T_offset[0:3, 0:3] @ T_WC_bel[0:3, 0:3]
@@ -135,7 +145,20 @@ class Detections():
         return self.data[idx]['time']
     
     def idx(self, time):
-        return np.where(self.times >= time)[0][0]
+        op1_exists = np.where(self.times >= time)[0].shape[0]
+        op2_exists = np.where(self.times <= time)[0].shape[0]
+        if not op1_exists and not op2_exists:
+            return None
+        if op1_exists:
+            op1 = np.where(self.times >= time)[0][0]
+        if op2_exists:
+            op2 = np.where(self.times <= time)[0][-1]
+        if not op1_exists: return op2
+        if not op2_exists: return op1
+        if abs(time - self.times[op1]) < abs(time - self.times[op2]):
+            return op1
+        else:
+            return op2
 
     def _list_from_str(self, start_indicator, end_indicator, obj):
         list_of_str = obj.split(start_indicator)[1].split(end_indicator)[0].replace('[', '').replace(']', '').strip().split(', ')
@@ -177,55 +200,39 @@ class GroundTruth():
             ped_list.append(ped_id)
         return ped_list, positions
     
+    
 class ConeDetections():
     
-    def __init__(self, yamlfile, K, T_BC):
+    def __init__(self, yamlfile, T_BC):
         with open(yamlfile, 'r') as f:
             self.detections = yaml.full_load(f)
-        self.K = K
+        self.times = np.array([x['time'] for x in self.detections])
         self.T_BC = T_BC
-
-    def detection3d(self, idx, T_WC):
-        bboxs = self.detections[idx]
-        pt3ds = []
-        for bbox in bboxs:
-            x0, y0, x1, y1, label = bbox
-            # if label == 'red':
-            if y1 > 240 and y1 < 470:
-                # wh_ratio = (x1-x0) / (y1-y0)
-                # if wh_ratio < .7:
-                #     w = x1-x0
-                #     y1 = (y0+y1)/2 + w*(1/.7)/2
-                    
-                pt = np.array([(x1 + x0) / 2, y1, 1]).reshape((3, 1))
-                pt3ds.append(pixel2groundplane(self.K, T_WC, pt))
-        return pt3ds
+        
+            
+    def detection3d(self, frametime, T_WC):
+        idx = np.where(self.times >= frametime)[0][0]
+        frame_dets_c = self.detections[idx]['detections']
+        frame_dets_w = [transform(T_WC, np.array(det).reshape((3, 1))) for det in frame_dets_c]
+        return frame_dets_w
     
 class ArtificialConeDetections():
     
     def __init__(self, K, T_BC, noisy=False):
         self.K = K
-        self.cones = np.array([1.089,-0.053,0.199,
-                    1.951,-1.638,0.217,
-                    -0.064,2.721,0.164,
-                    3.282,-0.152,0.210,
-                    -0.257,-0.098,0.190,
-                    4.670,1.119,0.199,
-                    4.652,-0.953,0.221,
-                    -2.062,1.916,0.164,
-                    -2.317,0.022,0.181,
-                    2.103,4.702,0.159,
-                    -4.946,1.568,0.166,
-                    -2.378,-1.821,0.198,
-                    -0.753,-3.317,0.216,
-                    -2.022,-1.632,0.201,
-                    2.932,-4.165,0.245]).reshape((-1, 3))
-        self.width = 640
-        self.height = 480
+        with open('/home/masonbp/ford-project/data/dynamic-final/cone_sample.yaml', 'r') as f:
+            markers = yaml.full_load(f)['markers']
+        self.cones = []
+        for m in markers:
+            pos = m['position']
+            self.cones.append([pos['x'], pos['y'], pos['z']])
+        self.cones = np.array(self.cones).reshape((-1, 3))
+        self.width = 1280
+        self.height = 720
         self.T_BC = T_BC
         self.noisy = noisy
 
-    def detection3d(self, idx, T_WC):
+    def detection3d(self, idx, T_WC, T_WC_bel):
         #
         # draw out FOV lines
         #
@@ -260,7 +267,8 @@ class ArtificialConeDetections():
         for i in range(self.cones.shape[0]):
             cone = self.cones[i,:].reshape((3, 1))
             if l0_check(cone) and l1_check(cone):
-                seeable_cones.append(np.copy(cone))
+                transformed_cone = transform(T_WC_bel @ np.linalg.inv(T_WC), cone)
+                seeable_cones.append(transformed_cone)
                 
         sigma = .5
         if self.noisy:
@@ -330,7 +338,7 @@ def get_epfl_frame_info(sigma_r=0, sigma_t=0):
         
     return fis
 
-def get_rover_detections(bagfile, sigma_r=0.0, sigma_t=0.0, 
+def get_rover_detections(bagfile, register_time, sigma_r=0.0, sigma_t=0.0, 
         rovers=['RR01', 'RR04', 'RR05', 'RR06', 'RR08'], cam_type='t265', rover_pose_topic='/world'): 
     if 'dynamic' in bagfile:
         tag_size = 0.1655
@@ -380,15 +388,16 @@ def get_rover_detections(bagfile, sigma_r=0.0, sigma_t=0.0,
     detections = []
     for rover in rovers:
         detections.append(Detections(
-            np.array(T_BCs[rover]).reshape((4, 4)),
-            bagfile.format(rover), 
-            f'/{rover}{rover_pose_topic}',
-            f'/{rover}/detections', 
+            T_BC=np.array(T_BCs[rover]).reshape((4, 4)),
+            bagfile=bagfile.format(rover), 
+            pose_topic=f'/{rover}{rover_pose_topic}',
+            detection_topic=f'/{rover}/detections', 
+            register_time=register_time,
             sigma_r=sigma_r, sigma_t=sigma_t))
         
     return detections
 
-def get_cone_detections(yamlfile='/home/masonbp/ford-project/data/dynamic-20230206/coneslayer_detections/run3_{}.yaml', rovers=['RR01', 'RR04', 'RR06', 'RR08']):
+def get_cone_detections(yamlfile='/home/masonbp/ford-project/data/dynamic-final/cone_detections/{}_detections.yaml', rovers=['RR01', 'RR04', 'RR06', 'RR08'], vicon=False):
     cone_detections = []
     with open(PARAMS.CAMERA_CALIB_FILE, 'r') as f:
         T_BCs = yaml.full_load(f)['l515']
@@ -396,14 +405,20 @@ def get_cone_detections(yamlfile='/home/masonbp/ford-project/data/dynamic-202302
         # cone_detections.append(
         #     ConeDetections(yamlfile=yamlfile.format(rover), K=intrinsic_calib('d435'), T_BC=T_BCs[rover])
         # )
-        cone_detections.append(
-            ArtificialConeDetections(K=intrinsic_calib('l515'), T_BC=T_BCs[rover], noisy=False)
-        )
+        if vicon:
+            cone_detections.append(
+                ArtificialConeDetections(K=intrinsic_calib('l515'), T_BC=T_BCs[rover], noisy=False)
+            )
+        else:
+            cone_detections.append(
+                ConeDetections(yamlfile=yamlfile.format(rover), T_BC=T_BCs[rover])
+            )
         
     return cone_detections
 
 if __name__ == '__main__':
         
-    detections = get_rover_detections(bagfile='/home/masonbp/ford-project/data/dynamic-final/centertrack_detections/fisheye/run01_{}.bag',
-                                      rovers=['RR01', 'RR04', 'RR06', 'RR08'], sigma_r=4.0*np.pi/180, sigma_t=0.5, cam_type='l515')
+    # detections = get_rover_detections(bagfile='/home/masonbp/ford-project/data/dynamic-final/centertrack_detections/fisheye/run01_{}.bag',
+    #                                   rovers=['RR01', 'RR04', 'RR06', 'RR08'], sigma_r=4.0*np.pi/180, sigma_t=0.5, cam_type='l515')
+    get_cone_detections(rovers=['RR04'])
     # GT = GroundTruth('/home/masonbp/ford-project/data/static-20221216/run01_filtered.bag')

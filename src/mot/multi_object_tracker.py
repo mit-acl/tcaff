@@ -21,7 +21,7 @@ class MultiObjectTracker():
         self.Tau_LDA = params.Tau_LDA
         self.Tau_GDA = params.Tau_GDA
         self.Tau_grown = 1
-        self.Tau_cone = .5
+        self.Tau_cone = 0.5
         
         self.alpha = params.alpha
         self.kappa = params.kappa
@@ -187,6 +187,8 @@ class MultiObjectTracker():
             cone.predict()
             cone.correction()
             cone.cycle()
+            if cone.ell > 600:
+                self.cones.remove(cone)
 
     def dkf(self):  
         for tracker in self.trackers + self.new_trackers:

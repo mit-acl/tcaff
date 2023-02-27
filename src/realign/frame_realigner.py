@@ -4,7 +4,8 @@ from scipy.spatial.transform import Rotation as Rot
 
 from config import tracker_params as TRACK_PARAM
 from mot.observation_msg import ObservationMsg
-from utils.transform import transform  
+from utils.transform import transform
+from realign.wls import wls
 
 class FrameRealigner():
     
@@ -169,16 +170,7 @@ class FrameRealigner():
             weight_vals = weight_vals.reshape((-1,1))
             det1 = det1[:, 0:3]
             det2 = det2[:, 0:3]
-            mean1 = (np.sum(det1 * weight_vals, axis=0) / np.sum(weight_vals)).reshape(-1)
-            mean2 = (np.sum(det2 * weight_vals, axis=0) / np.sum(weight_vals)).reshape(-1)
-            det1_mean_reduced = det1 - mean1
-            det2_mean_reduced = det2 - mean2
-            assert det1_mean_reduced.shape == det2_mean_reduced.shape
-            H = det1_mean_reduced.T @ (det2_mean_reduced * weight_vals)
-            U, s, V = np.linalg.svd(H)
-            R = U @ V.T
-            t = mean1.reshape((3,1)) - R @ mean2.reshape((3,1))
-            T = np.concatenate([np.concatenate([R, t], axis=1), np.array([[0,0,0,1]])], axis=0)
+            T = wls(det1, det2, weight_vals)
         else:
             mean1 = np.mean(det1, axis=0).reshape(-1)
             mean2 = np.mean(det2, axis=0).reshape(-1)

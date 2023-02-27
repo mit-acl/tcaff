@@ -9,45 +9,67 @@ from numpy.linalg import inv
 
 class PersonDetector():
 
-    def __init__(self, bagfile, device='cuda', sigma_r=0, sigma_t=0, 
-                 cams=['RR01', 'RR04', 'RR05', 'RR06', 'RR08'], cam_type='t265', 
-                 cam_pose_topic='/world'):
+    def __init__(self, bagfiles, device='cuda', sigma_r=0, sigma_t=0, 
+                 cams=['RR01', 'RR04', 'RR05', 'RR06', 'RR08'], cam_types=['t265'], 
+                 cam_pose_topic='/world', register_time=16, vicon_cones=False):
         self.extractor = FeatureExtractor(
             model_name='osnet_x1_0', # TODO: Is this a good enough re-id network?
             # model_path='a/b/c/model.pth.tar',
             device=device,
             verbose=False
         )
-        # self.detections = get_epfl_frame_info(sigma_r=sigma_r, sigma_t=sigma_t)
-        self.detections = get_rover_detections(bagfile=bagfile, sigma_r=sigma_r, sigma_t=sigma_t, 
-            rovers=cams, cam_type=cam_type, rover_pose_topic=cam_pose_topic)
-        self.cone_detections = get_cone_detections(rovers=cams)
-        self.x_max = 1920
-        self.y_max = 1080
-        self.start_time = self.detections[0].time(0)
+        # self.detections = dict()
+        # for c_type in cam_types:
+        #     self.detections[c_type] = get_rover_detections(bagfile=bagfile, sigma_r=sigma_r, sigma_t=sigma_t, 
+        #         rovers=cams, cam_type=c_type, rover_pose_topic=cam_pose_topic)
+        self.detections = []
+        for cam in cams:
+            self.detections.append(dict())
+            for cam_type, bagfile in zip(cam_types, bagfiles):
+                self.detections[-1][cam_type] = get_rover_detections(bagfile=bagfile, register_time=register_time,
+                    sigma_r=sigma_r, sigma_t=sigma_t, 
+                    rovers=[cam], cam_type=cam_type, rover_pose_topic=cam_pose_topic)[0]
+
+
+        self.cone_detections = get_cone_detections(rovers=cams, vicon=vicon_cones)
+        self.x_max, self.y_max = dict(), dict()
+        self.x_max['l515'] = 1920
+        self.y_max['l515'] = 1080
+        self.x_max['t265'] = 800
+        self.y_max['t265'] = 848
+        self.start_time = self.detections[0][cam_types[0]].time(0)
         self.num_cams = len(cams)
         self.raw_cone_detections = [[], [], [], []]
 
-    def get_person_boxes(self, im, cam_num, frame_time):
+    def get_person_boxes(self, im, cam_num, cam_type, frame_time):
         positions = []
         boxes = []
         features = []
-        for b, p in zip(self.detections[cam_num].bbox(frame_time), self.detections[cam_num].pos(frame_time)):
+        for b, p in zip(self.detections[cam_num][cam_type].bbox(frame_time), self.detections[cam_num][cam_type].pos(frame_time)):
             positions.append(p.reshape(-1).tolist())
             boxes.append(b)
-            features.append(self._get_box_features(b, im))
+            features.append(self._get_box_features(b, im, cam_type))
         return positions, boxes, features
     
-    def get_cones(self, cam_num, framenum, frame_time):
-        T_WC = self.detections[cam_num].T_WC(frame_time, T_BC=self.cone_detections[cam_num].T_BC, true_pose=True)
-        dets = self.cone_detections[cam_num].detection3d(framenum, T_WC)
-        for det in dets:
-            self.raw_cone_detections[cam_num].append(det.reshape(-1).tolist())
+    def get_cones(self, cam_num, cam_type, framenum, frame_time):
+        T_WC = self.detections[cam_num][cam_type].T_WC(frame_time, T_BC=self.cone_detections[cam_num].T_BC, true_pose=True)
+        T_WC_bel = self.detections[cam_num][cam_type].T_WC(frame_time, T_BC=self.cone_detections[cam_num].T_BC, true_pose=False)
+        dets = self.cone_detections[cam_num].detection3d(frame_time, T_WC_bel)
+        # for det in dets:
+        #     self.raw_cone_detections[cam_num].append(det.reshape(-1).tolist())
         return dets
     
-    def _get_box_features(self, box, im):
+    def get_ordered_detections(self, cams):
+        ordered_detections = []
+        for cam in cams:
+            for det in self.detections:
+                ordered_detections.append(det[cam])
+        return ordered_detections
+    
+    def _get_box_features(self, box, im, cam_type):
+        return np.ones((2,1))
         x0, y0, x1, y1 = box
-        x0, y0, x1, y1 = max(x0, 0), max(y0, 0), min(x1, self.x_max), min(y1, self.y_max)
+        x0, y0, x1, y1 = max(x0, 0), max(y0, 0), min(x1, self.x_max[cam_type]), min(y1, self.y_max[cam_type])
         box_im = im[int(y0):int(y1), int(x0):int(x1)]
         feature_vec = self.extractor(box_im)
         return feature_vec.cpu().detach().numpy().reshape((-1,1)) # convert to numpy array
@@ -59,23 +81,21 @@ class PersonDetector():
                 return False
         return True
     
-    # def get_T_obj2_obj1(self, cam1, cam2, incl_noise=False):
-    #     if incl_noise:
-    #         R1, t1, R1_noise, t1_noise = self.get_cam_pose(cam1)
-    #         R2, t2, R2_noise, t2_noise = self.get_cam_pose(cam2)
-    #         T_b1_g_translation = np.eye(4)
-    #         T_b1_l1 = np.eye(4)
-    #         T_b2_g_translation = np.eye(4)
-    #         T_b2_l2 = np.eye(4)
-            
-    #         T_b1_l1[0:3, 3] = t1_noise.reshape(-1)
-    #         T_b1_l1[0:3, 0:3] = R1_noise
-    #         T_b1_g_translation[0:3, 3] = t1.reshape(-1)
-    #         T_b2_l2[0:3, 3] = t2_noise.reshape(-1)
-    #         T_b2_l2[0:3, 0:3] = R2_noise
-    #         T_b2_g_translation[0:3, 3] = t2.reshape(-1)
-            
-    #         return T_b1_g_translation @ T_b1_l1 @ inv(T_b1_g_translation) @ \
-    #             T_b2_g_translation @ inv(T_b2_l2) @ inv(T_b2_g_translation)
-    #     else:
-    #         return np.eye(4)
+    def get_T_error(self, cam_num, cam_type, frame_time):
+        T_WC_true = self.detections[cam_num][cam_type].T_WC(
+            frame_time, T_BC=self.detections[cam_num][cam_type].T_BC, true_pose=True)
+        T_WC_bel = self.detections[cam_num][cam_type].T_WC(
+            frame_time, T_BC=self.detections[cam_num][cam_type].T_BC, true_pose=False)
+        return T_WC_true @ inv(T_WC_bel)
+    
+    def get_T_obj2_obj1(self, cam1_num, cam1_type, cam2_num, cam2_type, frame_time):
+        T_WC1_true = self.detections[cam1_num][cam1_type].T_WC(
+            frame_time, T_BC=self.detections[cam1_num][cam1_type].T_BC, true_pose=True)
+        T_WC1_bel = self.detections[cam1_num][cam1_type].T_WC(
+            frame_time, T_BC=self.detections[cam1_num][cam1_type].T_BC, true_pose=False)
+        T_WC2_true = self.detections[cam2_num][cam2_type].T_WC(
+            frame_time, T_BC=self.detections[cam2_num][cam2_type].T_BC, true_pose=True)
+        T_WC2_bel = self.detections[cam2_num][cam2_type].T_WC(
+            frame_time, T_BC=self.detections[cam2_num][cam2_type].T_BC, true_pose=False)
+        
+        return inv(T_WC1_true @ inv(T_WC1_bel)) @ T_WC2_true @ inv(T_WC2_bel)

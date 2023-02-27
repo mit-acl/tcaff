@@ -6,7 +6,7 @@ from utils.transform import transform
 
 class MetricEvaluator():
 
-    def __init__(self, max_d=.75):
+    def __init__(self, max_d):
         self.max_d = max_d
         self.acc = mm.MOTAccumulator(auto_id=True)
         
@@ -91,7 +91,7 @@ def get_avg_metric(metric, mes, divide_by_frames=False):
         m_avg += m_val
     return m_avg
 
-def print_metric_results(mes, inconsistencies, agents):
+def print_metric_results(mes, inconsistencies, agents, mota_only=True):
     mota = get_avg_metric('mota', mes)
     motp = get_avg_metric('motp', mes)
     fp = get_avg_metric('num_false_positives', mes, divide_by_frames=True)
@@ -103,6 +103,7 @@ def print_metric_results(mes, inconsistencies, agents):
     incon_per_track = inconsistencies / total_num_tracks if total_num_tracks else 0.0
 
     print(f'mota: {mota}')
+    if mota_only: return
     print(f'motp: {motp}')
     print(f'fp: {fp}')
     print(f'fn: {fn}')

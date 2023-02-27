@@ -40,13 +40,13 @@ class Tracker():
         self.seen_by_this_camera = False
         # self.color = (np.random.randint(0,255), np.random.randint(0,255), np.random.randint(0,255))
         self.to_str = ''
-        if camera_id == 0:
+        if camera_id % 4 == 0:
             self.color = (np.random.randint(100,255), 0, 0)
-        elif camera_id == 1:
+        elif camera_id % 4 == 1:
             self.color = (0, np.random.randint(100,255), 0)
-        elif camera_id == 2:
+        elif camera_id % 4 == 2:
             self.color = (0, 0, np.random.randint(100,255))
-        elif camera_id == 3:
+        elif camera_id % 4 == 3:
             self.color = (np.random.randint(100,255), 0, np.random.randint(100,255))
 
         self.predict()
