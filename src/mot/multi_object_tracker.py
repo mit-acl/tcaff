@@ -8,9 +8,11 @@ from .tracker import Tracker
 from config import tracker_params as TRACK_PARAM
 from realign.frame_realigner import FrameRealigner
 
+NUM_CAMS = 4
 class MultiObjectTracker():
 
     def __init__(self, camera_id, connected_cams, params):
+        self.connected_cams = connected_cams
         self.realigner = FrameRealigner(
             cam_id=camera_id,
             connected_cams=connected_cams,
@@ -268,7 +270,17 @@ class MultiObjectTracker():
     def get_observations(self):
         observations = []
         for tracker in self.trackers:
-            observations.append(tracker.observation_msg())
+            tracker_obs = tracker.observation_msg()
+            for cam in self.connected_cams:
+                obs = deepcopy(tracker_obs)
+                obs.add_destination(cam)
+                # if (cam % NUM_CAMS == 0) != (self.camera_id % NUM_CAMS == 0):
+                # try:
+                #     if self.realigner.realigns_since_change[cam] > 2 or self.realigner.last_change_Tmag[cam] > 1:
+                #         obs.R *= 1e2
+                # except:
+                #     import ipdb; ipdb.set_trace()
+                observations.append(obs)
         return observations
 
     def add_observations(self, observations, transform=True):
@@ -277,6 +289,7 @@ class MultiObjectTracker():
         self.unassociated_obs = []
         # Process each observation
         for obs in observations:
+            assert obs.destination == self.camera_id
             if transform:
                 obs = self.realigner.transform_obs(obs)
             # Check if we recognize the tracker id
@@ -301,8 +314,12 @@ class MultiObjectTracker():
                         break
                 # Add to unassociated_obs for tracker initialization if this is new
                 if not matched:                        
-                    assert obs.has_appearance_info, f'From camera: {self.camera_id}, No appearance info: {obs}'
-                    self.unassociated_obs.append(obs)
+                    # assert obs.has_appearance_info, f'From camera: {self.camera_id}, No appearance info: {obs}'
+                    # TODO: I can only do this because I am not using apperance vectors right now!!!
+                    if not obs.has_appearance_info:
+                        obs.add_appearance([np.ones((2, 1))])
+                    if np.trace(obs.R) < 100:
+                        self.unassociated_obs.append(obs)
         return len(self.unassociated_obs)
             
     def get_trackers(self, format='state_color'):
@@ -452,7 +469,6 @@ class MultiObjectTracker():
                 mean_xbar /= group_size
                 local_tracker_id = (self.camera_id, self.next_available_id)
                 new_tracker = Tracker(self.camera_id, self.next_available_id, mean_xbar[0:4,:], appearance_vecs)
-                # new_tracker.include_appearance_in_obs()
                 self.trackers.append(new_tracker)
                 self.next_available_id += 1
                 group_by_id.append(local_tracker_id)

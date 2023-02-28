@@ -14,6 +14,7 @@ from utils.transform import transform, pt_is_seeable, T_mag
 from utils.debug_help import *
 
 T_MAG_STATIC_OBJ_REALIGN_THRESH = 1.5
+SKIP_RR01_IN_VIEW = False
 
 class RoverMotFrontend():
     
@@ -84,10 +85,10 @@ class RoverMotFrontend():
                     # if True:
                         # print(T_new)
                         # print(self.detector.get_T_obj2_obj1(i, 'l515', j, 'l515', self.frame_time))
-                        mot1.realigner.transforms[mot2.camera_id] = T_new
-                        mot1.realigner.transforms[j] = T_new
-                        self.mots[i].realigner.transforms[mot2.camera_id] = T_new
-                        self.mots[i].realigner.transforms[j] = T_new
+                        mot1.realigner.update_transform(mot2.camera_id, T_new)
+                        mot1.realigner.update_transform(j, T_new)
+                        self.mots[i].realigner.update_transform(mot2.camera_id, T_new)
+                        self.mots[i].realigner.update_transform(j, T_new)
             # for mot in self.mots:
             #     mot.cones = []
             #     mot.new_cones = []
@@ -185,7 +186,7 @@ class RoverMotFrontend():
                     cv.imshow(f"frame{i}", resized)
 
         for mot in self.mots:
-            mot.add_observations(observations)
+            mot.add_observations([obs for obs in observations if obs.destination == mot.camera_id])
             mot.dkf()
             mot.tracker_manager()
             self.ic.add_groups(mot.camera_id, mot.groups_by_id)
@@ -251,7 +252,8 @@ class RoverMotFrontend():
         width = 800
         height = 848
         
-        for rover in self.detector.get_ordered_detections(self.cam_types):
+        rover_range_0 = 1 if SKIP_RR01_IN_VIEW else 0
+        for rover in self.detector.get_ordered_detections(['t265'])[rover_range_0:]:
             if pt_is_seeable(K, rover.T_WC(self.frame_time), width, height, ped_pos):
                 return True
         return False

@@ -137,6 +137,7 @@ class Tracker():
         if self.include_appearance:
             self.include_appearance = False
             obs_msg.add_appearance(deepcopy(self._a))
+        obs_msg.R = np.copy(self.R)
         return obs_msg
 
     def correction(self):

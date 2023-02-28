@@ -9,6 +9,7 @@ class ObservationMsg():
         self.R = None
         self.H = None
         self.a = None
+        self.destination = None
         self.has_measurement_info = False
         self.has_appearance_info = False
         
@@ -21,6 +22,9 @@ class ObservationMsg():
         self.z = z
         self.R = R
         self.H = H
+        
+    def add_destination(self, dest):
+        self.destination = dest
         
     def __str__(self):
         return f'observation from: {self.tracker_id}'

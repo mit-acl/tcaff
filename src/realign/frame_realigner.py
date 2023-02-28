@@ -4,7 +4,7 @@ from scipy.spatial.transform import Rotation as Rot
 
 from config import tracker_params as TRACK_PARAM
 from mot.observation_msg import ObservationMsg
-from utils.transform import transform
+from utils.transform import transform, T_mag
 from realign.wls import wls
 
 class FrameRealigner():
@@ -13,8 +13,12 @@ class FrameRealigner():
         self.cam_id = cam_id
         self.transforms = dict()
         self.new_transforms = dict()
+        self.realigns_since_change = dict()
+        self.last_change_Tmag = dict()
         for cam in connected_cams:
             self.transforms[cam] = np.eye(4)
+            self.realigns_since_change[cam] = 0
+            self.last_change_Tmag[cam] = 0
         self.detections_min_num = params.detections_min_num
         self.tol_growth_rate = params.tolerance_growth_rate
         self.T_mag_unity_tol = params.transform_mag_unity_tolerance
@@ -90,6 +94,14 @@ class FrameRealigner():
                 tracker.cycle(historical_only=True)
                 
         self.new_transforms = dict()
+        
+    def update_transform(self, cam_id, transform):
+        if not np.allclose(self.transforms[cam_id], transform):
+            self.realigns_since_change[cam_id] = 0
+            self.last_change_Tmag[cam_id] = T_mag(transform @ np.linalg.inv(self.transforms[cam_id]), self.deg2m)
+        else:
+            self.realigns_since_change[cam_id] += 1
+        self.transforms[cam_id] = transform
         
     def transform_obs(self, obs):
         obs_cam = obs.tracker_id[0]

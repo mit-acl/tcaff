@@ -133,7 +133,7 @@ if __name__ == '__main__':
     last_printed_metrics = sim.frame_time
     for framenum in frame_range:
 
-        realign = args.realign and framenum >= START_METRIC_FRAME + (10*30) and (framenum - FIRST_FRAME) % (5*30) == 0
+        realign = args.realign and framenum >= START_METRIC_FRAME + (0*30) and (framenum - FIRST_FRAME) % (5*30) == 0
         if realign:
             print('REALIGN')
         # if framenum < START_METRIC_FRAME:
@@ -142,7 +142,7 @@ if __name__ == '__main__':
 
         if args.metric_frequency != 0 and \
             sim.frame_time - last_printed_metrics > 1 / args.metric_frequency:
-            print_metric_results(sim.mes[0], sim.inconsistencies, sim.mots)
+            print_metric_results(sim.mes[0], sim.inconsistencies, sim.mots, mota_only=False)
             print(f'T_mag: {sim.T_mag()}')
             # print(f'T_diff: {sim.calc_T_diff()}')
             # print(f'T_diff_list: {sim.get_all_T_diffs()}')
@@ -173,7 +173,7 @@ if __name__ == '__main__':
         
     print('FINAL RESULTS')
     print('final ', end='')
-    print_metric_results(sim.full_mes, sim.inconsistencies, sim.mots)
+    print_metric_results(sim.full_mes, sim.inconsistencies, sim.mots, mota_only=False)
 
     if args.yaml_file is not None:
         with open(args.yaml_file, 'w') as f:
