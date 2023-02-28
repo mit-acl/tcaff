@@ -8,9 +8,15 @@ else:
     import open3d.cpu.pybind.t.pipelines.registration as treg
 
 from realign.wls import wls
+from utils.transform import transform
+
+import clipperpy
 
 # STARTING A LIST OF MAGIC NUMBERS HERE
 NUM_CONES_REQ = 7
+USE_CLIPPER = False
+ONLY_STRONG_CORRESPONDENCES = True
+ICP_MAX_DIST = 1.0
 
 def detections2pointcloud(detections, org_by_tracks):
     dets_cp = []
@@ -42,16 +48,47 @@ def realign_frames(detections1, detections2, initial_guess=np.eye(4), max_dist=.
     # Down-sampling voxel-size. If voxel_size < 0, original scale is used.
     voxel_size = -1
 
-    # time_trials=100
-    # for i in range(time_trials):
     reg_point_to_point = treg.icp(detections2, detections1, max_correspondence_distance,
                                 init_source_to_target, estimation, criteria,
                                 voxel_size)
-    return reg_point_to_point#.transformation.numpy()
-    # from pprint import pprint
-    # print(type(reg_point_to_point))
-    # pprint(dir(reg_point_to_point))
-    return reg_point_to_point.correspondences_.numpy()
+    return reg_point_to_point
+
+def realign_frames_clipper(detections1, detections2, sigma=0.30, epsilon=0.90):
+    """
+    Parameters
+    ----------
+    detections1 : (n,3) np.array
+    detections2 : (m,3) np.array
+
+    Return
+    ------
+    corres_set : (m,) np.array -- if no corres, entry is -1 else corresponding index of det1
+    """
+    iparams = clipperpy.invariants.EuclideanDistanceParams()
+    iparams.sigma = sigma
+    iparams.epsilon = epsilon
+    invariant = clipperpy.invariants.EuclideanDistance(iparams)
+
+    params = clipperpy.Params()
+    clipper = clipperpy.CLIPPER(invariant, params)
+
+    n = len(detections1)
+    m = len(detections2)
+    A = clipperpy.utils.create_all_to_all(n, m)
+
+    clipper.score_pairwise_consistency(detections1.T, detections2.T, A)
+    clipper.solve()
+    Ain = clipper.get_selected_associations()
+
+    corres_set = np.zeros((m,)).astype(int)
+    for i in range(m):
+        if i in Ain[:,1]:
+            idx, = np.where(Ain[:,1] == i)
+            corres_set[i] = Ain[idx,0]
+        else:
+            corres_set[i] = -1
+
+    return corres_set
 
 def realign_cones(cones1, cones2, T_current):
     if True:
@@ -68,24 +105,30 @@ def realign_cones(cones1, cones2, T_current):
     cone2_ptcld = o3d.t.geometry.PointCloud(np.array(cone2_states))
     return realign_frames(cone1_ptcld, cone2_ptcld, T_current, max_dist=1.0).transformation.numpy()
 
-def get_cones_and_weights(cones1_input, cones2_input, T_current):
-    cones1 = []; ages1 = []
-    cones2 = []; ages2 = []
-    for cone in cones1_input:
-        cones1.append(cone.state[:2, :].reshape(-1).tolist() + [0])
-        ages1.append([cone.ell])
-    for cone in cones2_input:
-        cones2.append(cone.state[:2, :].reshape(-1).tolist() + [0])
-        ages2.append([cone.ell])
-    if len(cones1) < NUM_CONES_REQ or len(cones2) < NUM_CONES_REQ: 
-        return None, None, T_current
-    cones1 = np.array(cones1)
-    ages1 = np.array(ages1)
-    cones2 = np.array(cones2)
-    ages2 = np.array(ages2)
-    cone1_ptcld = o3d.t.geometry.PointCloud(cones1)
-    cone2_ptcld = o3d.t.geometry.PointCloud(cones2)
-    correspondence_set2 = realign_frames(cone1_ptcld, cone2_ptcld, T_current, max_dist=1.0).correspondences_.numpy()
+def get_cones_and_weights(cones1_input, cones2_input, T_current, ages1=None, ages2=None):
+    if ages1 is None and ages2 is None:
+        cones1 = []; ages1 = []
+        cones2 = []; ages2 = []
+        for cone in cones1_input:
+            cones1.append(cone.state[:2, :].reshape(-1).tolist() + [0])
+            ages1.append([cone.ell])
+        for cone in cones2_input:
+            cones2.append(cone.state[:2, :].reshape(-1).tolist() + [0])
+            ages2.append([cone.ell])
+        if len(cones1) < NUM_CONES_REQ or len(cones2) < NUM_CONES_REQ: 
+            return None, None, T_current
+        cones1 = np.array(cones1)
+        ages1 = np.array(ages1)
+        cones2 = np.array(cones2)
+        ages2 = np.array(ages2)
+    else:
+        cones1 = np.array(cones1_input); cones2 = np.array(cones2_input)
+    if USE_CLIPPER:
+        correspondence_set2 = realign_frames_clipper(cones1, cones2)
+    else:
+        cone1_ptcld = o3d.t.geometry.PointCloud(cones1)
+        cone2_ptcld = o3d.t.geometry.PointCloud(cones2)
+        correspondence_set2 = realign_frames(cone1_ptcld, cone2_ptcld, T_current, max_dist=ICP_MAX_DIST).correspondences_.numpy()
     
     
     cones1_reordered = np.zeros(cones2.shape)
@@ -119,19 +162,20 @@ def recently_weighted_realign(cones1_input, cones2_input, T_current):
     c2_out = np.concatenate([cones2, cones2_reordered], axis=0)
     weights_all = np.concatenate([weights1, weights2], axis=0)
 
-    to_delete = []
-    for i in range(c1_out.shape[0]):
-        no_other_pair = True
-        for j in range(c2_out.shape[0]):
-            if i == j: continue
-            if np.allclose(c1_out[i,:], c1_out[j,:]) and np.allclose(c2_out[i,:], c2_out[j,:]):
-                no_other_pair = False
-        if no_other_pair:
-            to_delete.append(i)
+    if ONLY_STRONG_CORRESPONDENCES:
+        to_delete = []
+        for i in range(c1_out.shape[0]):
+            no_other_pair = True
+            for j in range(c2_out.shape[0]):
+                if i == j: continue
+                if np.allclose(c1_out[i,:], c1_out[j,:]) and np.allclose(c2_out[i,:], c2_out[j,:]):
+                    no_other_pair = False
+            if no_other_pair:
+                to_delete.append(i)
 
-    c1_out = np.delete(c1_out, to_delete, axis=0)
-    c2_out = np.delete(c2_out, to_delete, axis=0)
-    weights_all = np.delete(weights_all, to_delete, axis=0)
+        c1_out = np.delete(c1_out, to_delete, axis=0)
+        c2_out = np.delete(c2_out, to_delete, axis=0)
+        weights_all = np.delete(weights_all, to_delete, axis=0)
 
     if len(c1_out)/2 < NUM_CONES_REQ:
         return T_current
@@ -179,7 +223,52 @@ def recently_weighted_realign(cones1_input, cones2_input, T_current):
     weights = 1/(.01 + ages1 * ages2_reordered)
     return wls(cones1, cones2_reordered, weights)
 
-def my_realign_cones(cones1, cones2, ages1, ages2, T_current):
+def my_realign_cones(cones1_in, cones2_in, ages1, ages2, T_current):
+    if cones1_in.shape[0] < NUM_CONES_REQ or cones2_in.shape[0] < NUM_CONES_REQ:
+        return T_current, 0, 0
+    try:
+        cones1_reordered, cones2, weights1 = get_cones_and_weights(np.copy(cones1_in), np.copy(cones2_in), T_current, np.copy(ages1), np.copy(ages2))
+    except:
+        import ipdb; ipdb.set_trace()
+    try:
+        cones2_reordered, cones1, weights2 = get_cones_and_weights(np.copy(cones2_in), np.copy(cones1_in), inv(T_current), np.copy(ages2), np.copy(ages1))
+    except:
+        import ipdb; ipdb.set_trace()
+    if cones1_reordered is None or cones2_reordered is None or cones1 is None or cones2 is None:
+        return T_current, 0, 0
+    c1_out = np.concatenate([cones1_reordered, cones1], axis=0)
+    c2_out = np.concatenate([cones2, cones2_reordered], axis=0)
+    weights_all = np.concatenate([weights1, weights2], axis=0)
+
+    to_delete = []
+    for i in range(c1_out.shape[0]):
+        no_other_pair = True
+        for j in range(c2_out.shape[0]):
+            if i == j: continue
+            if np.allclose(c1_out[i,:], c1_out[j,:]) and np.allclose(c2_out[i,:], c2_out[j,:]):
+                no_other_pair = False
+        if no_other_pair:
+            to_delete.append(i)
+
+    c1_out = np.delete(c1_out, to_delete, axis=0)
+    c2_out = np.delete(c2_out, to_delete, axis=0)
+    weights_all = np.delete(weights_all, to_delete, axis=0)
+
+    if len(c1_out)/2 < NUM_CONES_REQ:
+        return T_current, 0, 0
+
+    T_new = wls(c1_out, c2_out, weights_all)
+    
+    c2_transformed = np.empty(c2_out.shape)
+    for i in range(c2_out.shape[0]):
+        c2_transformed[i, :] = transform(T_new, c2_out[i, :])
+    
+    least_sq_sum = 0
+    for i in range(c2_out.shape[0]):
+        least_sq_sum += weights_all.item(i) * np.linalg.norm(c1_out[i, :] - c2_transformed[i, :])**2        
+        
+    return T_new, least_sq_sum / 2, c2_out.shape[0] / 2
+
     cone1_states = cones1
     cone2_states = cones2
     # TODO: change how I get ell
@@ -224,22 +313,3 @@ def my_realign_cones(cones1, cones2, ages1, ages2, T_current):
         
     weights = 1/(1 + ages1 * ages2_reordered)
     return wls(cones1, cones2_reordered, weights)
-    
-    
-    
-    # cone1_mat = np.array(cone1_states)
-    # cone2_mat = np.array(cone2_states)
-    # sim_scores = np.array(cone1_mat.shape[0], cone2_mat.shape[0])
-    # for i in range(cone1_mat.shape[0]):
-    #     for j in range(cone2_mat.shape[0]):
-    #         sim_scores[i, j] = norm(cone1_mat[i,:] - cone2_mat[i,:])
-
-#     row_ind, col_ind
-
-#     cost = np.array([[4, 1, 3], [2, 0, 5], [3, 2, 2]])
-# >>> from scipy.optimize import linear_sum_assignment
-# >>> row_ind, col_ind = linear_sum_assignment(cost)
-# >>> col_ind
-# array([1, 0, 2])
-# >>> cost[row_ind, col_ind].sum()
-    
