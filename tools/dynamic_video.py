@@ -98,8 +98,19 @@ class Viewer():
             [0, 0, -1],
             [1, 0, 0]
         ])
+
+        self.rover_artists = []
+        for i in range(2):
+            rover_dict = {'est': {}, 'gt': {}}
+            for rover in ROVERS:
+                rover_dict['est'][rover] = self.get_rover_artist(self.axs[0, i], grayed_out=False)
+            for rover in ROVERS:
+                rover_dict['gt'][rover] = self.get_rover_artist(self.axs[0, i], grayed_out=True)
+            self.rover_artists.append(rover_dict)
+        self.objs = [[], []]
         
     def view(self, framenum):
+        
         self.cap.set(cv.CAP_PROP_POS_FRAMES, framenum-1)
         res, frame_orig = self.cap.read()
         # self.fig.suptitle(f'Frame: {framenum}')
@@ -108,7 +119,7 @@ class Viewer():
         # haha
         for i, datum in enumerate(self.data):
             # new plot setup
-            self.axs[0, i].clear()
+            # self.axs[0, i].clear()
             self.axs[1, i].clear()
             self.axs[0, i].set_xlim(self.xlim)
             self.axs[0, i].set_ylim(self.ylim)
@@ -135,7 +146,7 @@ class Viewer():
                     color='yellowgreen'
                 else:
                     color='purple'
-                self.axs[0, i].plot(gt[0], gt[1], 'o', color=color)
+                self.objs[i].append(self.axs[0, i].plot(gt[0], gt[1], 'o', color=color))
 
             rover = df['rovers'][self.rover]
             T_WC = np.array(rover['T_WC']).reshape((4,4))
@@ -144,10 +155,8 @@ class Viewer():
 
                 track_corrected = transform(T_WC @ inv(T_WC_bel), np.array(track + [0]))
                 track_corrected[2] = 0
-                self.axs[0, i].plot(track_corrected[0], track_corrected[1], 'x', color='blue')
+                self.objs[i].append(self.axs[0, i].plot(track_corrected[0], track_corrected[1], 'x', color='blue'))
 
-                # T_WC_bel[3:2] = T_WC[3:2]
-                # track_c = transform(inv(T_WC_bel), np.array(track + [0])).reshape((3,1))
                 track_c = transform(inv(T_WC), track_corrected)
                 if track_c.item(2) > 0:
                     uvs = (self.K @ track_c)
@@ -159,12 +168,7 @@ class Viewer():
             for r in df['rovers']:
                 T_WR = np.array(df['rovers'][r]['T_WC']).reshape((4,4))
                 T_WR = self.T2pltT(T_WR, self.axs[0, i])
-                # x, y = self.pts_from(T_WR)
-                # import ipdb; ipdb.set_trace()
-                # ms = 4
-                self.draw_rover(self.axs[0, i], T_WR, ghost=True)
-                # self.axs[0, i].plot(x[0], y[0], 'o', color='red', markerSize=ms)
-                # self.axs[0, i].plot(x, y, color='red')
+                self.draw_rover(self.rover_artists[i]['gt'][r], T_WR)
 
             for r, T_fix in rover['T_fix'].items():
                 T_fix = np.array([T_fix]).reshape((4,4))
@@ -172,38 +176,16 @@ class Viewer():
                 T_j_hat = np.array([df['rovers'][r_name]['T_WC_bel']]).reshape((4,4))
                 T_j = T_WC @ inv(T_WC_bel) @ T_fix @ T_j_hat
                 T_j = self.T2pltT(T_j, self.axs[0, i])
-                # x, y = self.pts_from(T_j)
-                # import ipdb; ipdb.set_trace()
-                # self.axs[0, i].plot(x[0], y[0], 'o', color='orange', markerSize=ms)
-                # self.axs[0, i].plot(x, y, color='orange')
-                self.draw_rover(self.axs[0, i], T_j)
+                self.draw_rover(self.rover_artists[i]['est'][r_name], T_j)
                 self.axs[0, i].set_aspect(1)
 
             
             self.axs[1, i].imshow(frame[...,::-1])
 
         return
-    
-    def T2pltT(self, T, ax):
-        T[:3, :3] = T[:3,:3] @ self.cam2notcam
-        T = np.delete(T, [2], axis=0)
-        T = np.delete(T, [2], axis=1)
-        T = Affine2D(T) + ax.transData
-        return T
 
-    def pts_from(self, T_WC):
-        x = [T_WC[0,3]] 
-        y = [T_WC[1,3]]
-        length = .5
-        R = Rot.from_matrix(T_WC[:3,:3] @ self.cam2notcam )
-        th = R.as_euler('xyz', degrees=False)[2]
-        x.append(T_WC[0,3] + length * np.cos(th))
-        y.append(T_WC[1,3] + length * np.sin(th))
-        return x, y
-            
-    
-    def draw_rover(self, ax, T_WB, ghost=False):
-        if ghost:
+    def get_rover_artist(self, ax, grayed_out):
+        if grayed_out:
             rover_color = '#dbb4bc'
             wheel_color = 'gray'
         else:
@@ -215,6 +197,7 @@ class Viewer():
         WHEELR = 0.222 * s # radius of wheel
         WHEELD = 0.268 * s # distance btwn wheel centers
         WHEELT = (0.497 * s - WIDTH) / 2. # wheel thickness
+        T_WB = Affine2D(np.eye(3))
 
         bl = - np.r_[LENGTH, WIDTH] / 2.
         body = plt.Rectangle(bl, LENGTH, WIDTH, color=rover_color, transform=T_WB)
@@ -261,7 +244,26 @@ class Viewer():
         # ax.add_patch(plt.Rectangle((0.5, 0.5), 2, 2, color=wheel_color))
 
         artist = {'body': body, 'orientation': orientation, 'wheels': wheels, 'frustum': frustum}
+        return artist
+    
+    def T2pltT(self, T, ax):
+        T[:3, :3] = T[:3,:3] @ self.cam2notcam
+        T = np.delete(T, [2], axis=0)
+        T = np.delete(T, [2], axis=1)
+        T = Affine2D(T) + ax.transData
+        return T
 
+    def pts_from(self, T_WC):
+        x = [T_WC[0,3]] 
+        y = [T_WC[1,3]]
+        length = .5
+        R = Rot.from_matrix(T_WC[:3,:3] @ self.cam2notcam )
+        th = R.as_euler('xyz', degrees=False)[2]
+        x.append(T_WC[0,3] + length * np.cos(th))
+        y.append(T_WC[1,3] + length * np.sin(th))
+        return x, y
+    
+    def draw_rover(self, artist, T_WB):
         artist['body'].set_transform(T_WB)
         [w.set_transform(T_WB) for w in artist['wheels']]
         artist['orientation'].set_transform(T_WB)
@@ -273,9 +275,6 @@ class Viewer():
 
         return
         
-
-
-
     def get_track_color(self, i):
         c = np.array(plt.get_cmap('tab10').colors[i])
         c = (c * 255).astype(int)
