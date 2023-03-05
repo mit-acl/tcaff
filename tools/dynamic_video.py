@@ -47,11 +47,8 @@ num_rovers = args.num_rovers
 ROVERS = ['RR04', 'RR06', 'RR08'] if num_rovers == 3 else ['RR01', 'RR04', 'RR06', 'RR08']
 rover = args.rover
 
-if False:
-    datafile1 = sys.argv[1]
-else:
-    datafile1 = f'/home/masonbp/ford-project/data/mot_metrics/dynamic-final/debug_files/{num_rovers}_rovers/cam_project_test_realign.json'
-    datafile2 = f'/home/masonbp/ford-project/data/mot_metrics/dynamic-final/debug_files/{num_rovers}_rovers/cam_project_test_nofix.json'
+datafile1 = f'/home/masonbp/ford-project/data/mot_metrics/dynamic-final/debug_files/{num_rovers}_rovers/cam_project_test_realign.json'
+datafile2 = f'/home/masonbp/ford-project/data/mot_metrics/dynamic-final/debug_files/{num_rovers}_rovers/cam_project_test_nofix.json'
 video_out = args.output
 video_in = f'/home/masonbp/ford-project/data/dynamic-final/videos/l515/run1_{rover}.avi'
 
@@ -73,7 +70,7 @@ class Viewer():
         self.fig, (self.axs) = plt.subplots(2, 2)
         self.fig.set_dpi(240)
         self.xlim = [-8., 8.]
-        self.ylim = [-8., 8.]
+        self.ylim = [-5., 5.]
 
         self.axs[1,0].tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
         self.axs[1,0].tick_params(axis='y', which='both', left=False, right=False, labelleft=False)
@@ -110,7 +107,13 @@ class Viewer():
         self.objs = [[], []]
         
     def view(self, framenum):
+        '''
+        Shows the desired frame number
         
+        Parameters
+        ----------
+        framenum : int
+        '''
         self.cap.set(cv.CAP_PROP_POS_FRAMES, framenum-1)
         res, frame_orig = self.cap.read()
         # self.fig.suptitle(f'Frame: {framenum}')
@@ -120,6 +123,9 @@ class Viewer():
         for i, datum in enumerate(self.data):
             # new plot setup
             # self.axs[0, i].clear()
+            for j in range(len(self.objs[i])):
+                obj = self.objs[i].pop(0).pop(0)
+                obj.remove()
             self.axs[1, i].clear()
             self.axs[0, i].set_xlim(self.xlim)
             self.axs[0, i].set_ylim(self.ylim)
@@ -177,6 +183,7 @@ class Viewer():
                 T_j = T_WC @ inv(T_WC_bel) @ T_fix @ T_j_hat
                 T_j = self.T2pltT(T_j, self.axs[0, i])
                 self.draw_rover(self.rover_artists[i]['est'][r_name], T_j)
+                # self.axs[0, i].set_aspect((self.xlim[1]-self.xlim[0]) / (self.ylim[1]-self.ylim[0]))
                 self.axs[0, i].set_aspect(1)
 
             
