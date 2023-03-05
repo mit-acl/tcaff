@@ -27,7 +27,7 @@ parser.add_argument('-1', '--single-frame',
                     default=None,
                     type=int,
                     help='only view one frame.')
-parser.add_argument('--spedup',
+parser.add_argument('--rate',
                     default=2,
                     help='speedup.')
 parser.add_argument('-n', '--num-rovers',
@@ -67,19 +67,30 @@ class Viewer():
         self.last_T_fix = np.eye(4).reshape((16,))
 
         # setup plotting
+        plt.rcParams.update({'font.size': 5})
+        # plt.rcParams.update({'wspace'})
         self.fig, (self.axs) = plt.subplots(2, 2)
         self.fig.set_dpi(240)
-        self.xlim = [-8., 8.]
-        self.ylim = [-5., 5.]
+        # self.fig.subplots_adjust(wspace=0, hspace=0)
+        self.xlim = [-32/3, 32/3]
+        self.ylim = [-6., 6.]
+        self.marker_size = 5
+        self.rover_scale = 1.5
 
         self.axs[1,0].tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
         self.axs[1,0].tick_params(axis='y', which='both', left=False, right=False, labelleft=False)
-        self.axs[1,1].tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
-        self.axs[1,1].tick_params(axis='y', which='both', left=False, right=False, labelleft=False)
-        self.axs[0,0].set_ylabel('m')
-        self.axs[0,1].set_ylabel('m')
-        self.axs[0,1].set_xlabel('m')
-        self.axs[0,0].set_xlabel('m')
+        for i in range(2):
+            self.axs[0, i].set_xlabel('m')
+            self.axs[0, i].set_ylabel('m')
+            self.axs[0, i].set_xlim(self.xlim)
+            self.axs[0, i].set_ylim(self.ylim)
+            self.axs[0, i].set_xticks([-5, 0, 5], minor=False)
+            self.axs[0, i].set_yticks([-5, 0, 5], minor=False)
+            self.axs[0, i].grid(True)
+            self.axs[1, i].tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
+            self.axs[1, i].tick_params(axis='y', which='both', left=False, right=False, labelleft=False)
+        self.fig.set_dpi(300)
+
 
         self.data = []
         for df in datafiles:
@@ -100,9 +111,9 @@ class Viewer():
         for i in range(2):
             rover_dict = {'est': {}, 'gt': {}}
             for rover in ROVERS:
-                rover_dict['est'][rover] = self.get_rover_artist(self.axs[0, i], grayed_out=False)
+                rover_dict['gt'][rover] = self.get_rover_artist(self.axs[0, i], grayed_out=True, main_rover=(self.rover == rover))
             for rover in ROVERS:
-                rover_dict['gt'][rover] = self.get_rover_artist(self.axs[0, i], grayed_out=True)
+                rover_dict['est'][rover] = self.get_rover_artist(self.axs[0, i], grayed_out=False, main_rover=(self.rover == rover))
             self.rover_artists.append(rover_dict)
         self.objs = [[], []]
         
@@ -127,9 +138,6 @@ class Viewer():
                 obj = self.objs[i].pop(0).pop(0)
                 obj.remove()
             self.axs[1, i].clear()
-            self.axs[0, i].set_xlim(self.xlim)
-            self.axs[0, i].set_ylim(self.ylim)
-            self.axs[0, i].grid(True)
             frame = np.copy(frame_orig)
 
             df_idx = None
@@ -146,13 +154,14 @@ class Viewer():
                     if is_viewable(np.array(gt), T_WC):
                         num_viewed_by += 1
                 # assert num_viewed_by > 0
-                if num_viewed_by == 0:
-                    color='black'
-                if num_viewed_by == 1:
-                    color='yellowgreen'
-                else:
-                    color='purple'
-                self.objs[i].append(self.axs[0, i].plot(gt[0], gt[1], 'o', color=color))
+                # if num_viewed_by == 0:
+                #     color='black'
+                # if num_viewed_by == 1:
+                #     color='yellowgreen'
+                # else:
+                #     color='purple'
+                color='yellowgreen'
+                self.objs[i].append(self.axs[0, i].plot(gt[0], gt[1], 'o', markerSize=self.marker_size, color=color))
 
             rover = df['rovers'][self.rover]
             T_WC = np.array(rover['T_WC']).reshape((4,4))
@@ -161,7 +170,7 @@ class Viewer():
 
                 track_corrected = transform(T_WC @ inv(T_WC_bel), np.array(track + [0]))
                 track_corrected[2] = 0
-                self.objs[i].append(self.axs[0, i].plot(track_corrected[0], track_corrected[1], 'x', color='blue'))
+                self.objs[i].append(self.axs[0, i].plot(track_corrected[0], track_corrected[1], 'x', markerSize=self.marker_size, color='blue'))
 
                 track_c = transform(inv(T_WC), track_corrected)
                 if track_c.item(2) > 0:
@@ -186,22 +195,29 @@ class Viewer():
                 # self.axs[0, i].set_aspect((self.xlim[1]-self.xlim[0]) / (self.ylim[1]-self.ylim[0]))
                 self.axs[0, i].set_aspect(1)
 
+            self.fig.canvas.draw()
+            self.fig.canvas.flush_events()
             
             self.axs[1, i].imshow(frame[...,::-1])
 
+        self.fig.subplots_adjust(wspace=0.2, hspace=0)
         return
 
-    def get_rover_artist(self, ax, grayed_out):
-        if grayed_out:
+    def get_rover_artist(self, ax, grayed_out, main_rover):
+        if main_rover:
+            rover_color = '#a45ee5'
+            wheel_color = 'k'
+        elif grayed_out:
             rover_color = '#dbb4bc'
             wheel_color = 'gray'
         else:
             rover_color = '#DC143C'
             wheel_color = 'k'
-        s = 2 # scale factor
+        include_frustum = grayed_out
+        s = self.rover_scale # scale factor
         WIDTH = 0.381 * s
         LENGTH = 0.508 * s
-        WHEELR = 0.222 * s # radius of wheel
+        WHEELR = 0.12 * s #0.222 * s # radius of wheel
         WHEELD = 0.268 * s # distance btwn wheel centers
         WHEELT = (0.497 * s - WIDTH) / 2. # wheel thickness
         T_WB = Affine2D(np.eye(3))
@@ -246,11 +262,12 @@ class Viewer():
             ax.add_patch(wheel)
         ax.add_patch(body)
         ax.add_patch(orientation)
-        ax.add_patch(frustum)
+        if include_frustum:
+            ax.add_patch(frustum)
         # print(ax.add_patch)
         # ax.add_patch(plt.Rectangle((0.5, 0.5), 2, 2, color=wheel_color))
 
-        artist = {'body': body, 'orientation': orientation, 'wheels': wheels, 'frustum': frustum}
+        artist = {'body': body, 'orientation': orientation, 'wheels': wheels, 'frustum': frustum if include_frustum else None}
         return artist
     
     def T2pltT(self, T, ax):
@@ -274,11 +291,9 @@ class Viewer():
         artist['body'].set_transform(T_WB)
         [w.set_transform(T_WB) for w in artist['wheels']]
         artist['orientation'].set_transform(T_WB)
-        artist['frustum'].set_transform(T_WB)
+        if artist['frustum'] is not None:
+            artist['frustum'].set_transform(T_WB)
         # artist['label'].set_transform(T_WB)
-
-        self.fig.canvas.draw()
-        self.fig.canvas.flush_events()
 
         return
         
@@ -295,13 +310,12 @@ if not args.num_frames:
     num_frames = (180-125) * fps
 else:
     num_frames = args.num_frames
-# viewer.fig.set_dpi(300)
 
 if not args.single_frame:
     # saving to m4 using ffmpeg writer
     ani = FuncAnimation(viewer.fig, lambda i: viewer.view(i*30/fps + start_frame), frames=num_frames, interval=1, repeat=False) 
     print('saving video...')
-    writervideo = FFMpegWriter(fps=int(fps*2))
+    writervideo = FFMpegWriter(fps=int(fps*args.rate))
     ani.save(video_out, writer=writervideo)
     plt.close()
 else:
