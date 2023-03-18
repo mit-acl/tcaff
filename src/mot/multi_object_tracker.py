@@ -1,5 +1,5 @@
 import numpy as np
-from numpy.linalg import norm as norm
+from numpy.linalg import norm as norm, inv
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial.transform import Rotation as Rot
 from copy import deepcopy
@@ -9,6 +9,7 @@ from config import tracker_params as TRACK_PARAM
 from realign.frame_realigner import FrameRealigner
 
 NUM_CAMS = 4
+COV_MAG = .01
 class MultiObjectTracker():
 
     def __init__(self, camera_id, connected_cams, params):
@@ -41,6 +42,7 @@ class MultiObjectTracker():
         self.inconsistencies = 0
         self.groups_by_id = []
         self.recent_detection_list = []
+        self.cov = np.eye(4) * COV_MAG
         for i in range(50):
             self.recent_detection_list.append(None)
         
@@ -274,10 +276,22 @@ class MultiObjectTracker():
             for cam in self.connected_cams:
                 obs = deepcopy(tracker_obs)
                 obs.add_destination(cam)
+                Jac_T = np.zeros((4,4))
+                Jac_T[:2, :2] = self.realigner.transforms[cam][:2, :2]
+                Jac_T[2:, 2:] = self.realigner.transforms[cam][:2, :2]
+                try:
+                    T_fa = self.realigner.transforms[cam] @ inv(self.realigner.T_last[cam])
+                except:
+                    import ipdb; ipdb.set_trace()
+                R_fa = np.zeros((4, 4))
+                R_fa[0, 0] = T_fa[0, 3]*(self.realigner.realigns_since_change[cam]+1) # for now, just the mag of x and y change
+                R_fa[1, 1] = T_fa[1, 3]*(self.realigner.realigns_since_change[cam]+1) # for now, just the mag of x and y change
+                obs.R = Jac_T @ (self.cov + obs.R) @ Jac_T.T + R_fa
+                # obs.R *= 1 + self.realigner.last_change_Tmag[cam]*(self.realigner.realigns_since_change[cam]+1)
                 # if (cam % NUM_CAMS == 0) != (self.camera_id % NUM_CAMS == 0):
-                # try:
-                #     if self.realigner.realigns_since_change[cam] > 2 or self.realigner.last_change_Tmag[cam] > 1:
-                #         obs.R *= 1e2
+                # # try:
+                    # if self.realigner.realigns_since_change[cam] > 2 or self.realigner.last_change_Tmag[cam] > 1:
+                        # obs.R *= 10
                 # except:
                 #     import ipdb; ipdb.set_trace()
                 observations.append(obs)
@@ -318,7 +332,8 @@ class MultiObjectTracker():
                     # TODO: I can only do this because I am not using apperance vectors right now!!!
                     if not obs.has_appearance_info:
                         obs.add_appearance([np.ones((2, 1))])
-                    if np.trace(obs.R) < 100:
+                    # if np.trace(obs.R) < 100:
+                    if True:
                         self.unassociated_obs.append(obs)
         return len(self.unassociated_obs)
             
@@ -337,6 +352,15 @@ class MultiObjectTracker():
             for tracker in self.trackers:
                 tracker_dict[tracker.id] = np.array(tracker.state[0:2,:].reshape(-1))
             return tracker_dict
+        elif format == 'list':
+            tracker_list = []
+            for tracker in self.trackers:
+                tracker_list.append(tracker.state[0:2,:].reshape(-1).tolist())
+            print(tracker_list)
+            return tracker_list
+        else:
+            print('you cannot do that')
+            assert False
         
     def get_recent_detections(self, from_trackers=False):
         if from_trackers:

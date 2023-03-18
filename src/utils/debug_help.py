@@ -79,5 +79,20 @@ def get_realign_debug_dict(frametime, mot1, mot2, detections1, detections2, T_fi
     d['frametime'] = frametime
     return d
     
-
+def dump_everything_in_the_whole_world(frametime, framenum, rovers, mots, detections, gt_list):
+    d = dict()
+    d['frametime'] = frametime
+    d['framenum'] = framenum
+    d['rovers'] = dict()
+    d['groundtruth'] = gt_list
     
+    for r, m, det in zip(rovers, mots, detections):
+        r_dict = dict()
+        r_dict['T_WC'] = det.T_WC(frametime, T_BC=det.T_BC, true_pose=True).reshape(-1).tolist()
+        r_dict['T_WC_bel'] = det.T_WC(frametime, T_BC=det.T_BC, true_pose=False).reshape(-1).tolist()
+        r_dict['tracks'] = m.get_trackers(format='list')
+        r_dict['T_fix'] = dict()
+        for r_id, T in m.realigner.transforms.items():
+            r_dict['T_fix'][r_id] = T.reshape(-1).tolist()
+        d['rovers'][r] = r_dict
+    return d

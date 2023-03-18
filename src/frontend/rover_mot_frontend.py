@@ -41,6 +41,7 @@ class RoverMotFrontend():
             self.mots.append(MultiObjectTracker(i, connected_cams=connected_cams, params=mot_params))
             self.mes[0].append(MetricEvaluator(max_d=metric_d))
             self.full_mes.append(MetricEvaluator(max_d=metric_d))
+        self.rover_names = rovers
         
         self.inconsistencies = 0
         self.ic = InconsistencyCounter()
@@ -131,7 +132,7 @@ class RoverMotFrontend():
             #     new_d = get_cone_debug_dict(self.frame_time, cones, self.detector.get_ordered_detections(['l515'])[0])
             #     self.debug.append(new_d)
             mot.cone_update(cones)    
-        if framenum % 30 == 0:
+        if framenum % 1 == 0:
             # new_d = get_realign_debug_dict(self.frame_time, self.mots[2], self.mots[3], 
             #                                self.detector.get_ordered_detections(['l515'])[0], 
             #                                self.detector.get_ordered_detections(['l515'])[1],
@@ -140,15 +141,19 @@ class RoverMotFrontend():
                 # self.debug.append(new_d) 
         
             # more advanced heh
-            new_l = []
-            for j in range(self.num_rovers):
-                for i in range(self.num_rovers):
-                    if i == j: continue
-                    new_l.append(get_realign_debug_dict(self.frame_time, self.mots[self.num_rovers+j], self.mots[self.num_rovers+i], 
-                                           self.detector.get_ordered_detections(['l515'])[j], 
-                                           self.detector.get_ordered_detections(['l515'])[i],
-                                           self.detector.get_T_obj2_obj1(j, 'l515', i, 'l515', self.frame_time)))
-            self.debug.append(new_l)
+            # new_l = []
+            # for j in range(self.num_rovers):
+            #     for i in range(self.num_rovers):
+            #         if i == j: continue
+            #         new_l.append(get_realign_debug_dict(self.frame_time, self.mots[self.num_rovers+j], self.mots[self.num_rovers+i], 
+            #                                self.detector.get_ordered_detections(['l515'])[j], 
+            #                                self.detector.get_ordered_detections(['l515'])[i],
+            #                                self.detector.get_T_obj2_obj1(j, 'l515', i, 'l515', self.frame_time)))
+            # self.debug.append(new_l)
+            
+            # even more advanced
+            new_d = dump_everything_in_the_whole_world(self.frame_time, framenum, self.rover_names, self.mots[self.num_rovers:], self.detector.get_ordered_detections(['l515']), self.make_gt_list())
+            self.debug.append(new_d)
             
         # Continues to next frame when robots have new detections
         # if not detector.times_different(self.frame_time, last_frame_time) and abs(self.frame_time - last_frame_time) < TRIGGER_AUTO_CYCLE_TIME:
@@ -317,3 +322,12 @@ class RoverMotFrontend():
         elif filter == 't':
             mag = np.linalg.norm(T[:2,3])
         return mag
+
+    def make_gt_list(self):
+        ped_ids, peds = self.GT.ped_positions(self.frame_time)
+        gt_list = []
+        for ped_id, ped_pos in zip(ped_ids, peds):
+            if not self.in_view(ped_pos):
+                continue
+            gt_list.append(ped_pos[0:2].tolist())
+        return gt_list

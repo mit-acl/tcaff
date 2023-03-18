@@ -58,7 +58,7 @@ if __name__ == '__main__':
             type=float, default=.5)
     parser.add_argument('--l515-conf',
             type=float, default=.6)
-    parser.add_argument('--yaml-file', type=str, default=None)
+    parser.add_argument('--json-file', type=str, default=None)
     parser.add_argument('--metric-dist', type=float, default=0.75)
     args = parser.parse_args()
 
@@ -83,10 +83,18 @@ if __name__ == '__main__':
         # LAST_FRAME = 110*30 #220*30 #7650
         # START_METRIC_FRAME = 65*30 #500
         
+        # ######### THE REAL ONE IS HEREEE########
         FIRST_FRAME = 15*30
-        LAST_FRAME = 7650
+        # LAST_FRAME = 7650
         START_METRIC_FRAME = 15*30
-        register_time = 20
+        # register_time = 20
+        # REALIGN_PERIOD = 1
+        
+        # FIRST_FRAME = 125*30
+        LAST_FRAME = 180*30
+        # START_METRIC_FRAME = 125*30
+        register_time = 0
+        REALIGN_PERIOD = 1
     ped_bag = str(root / ped_bag)
     for i in range(len(detection_bags)):
         detection_bags[i] = str(root / detection_bags[i])
@@ -99,9 +107,8 @@ if __name__ == '__main__':
     vicon_cones = False
     metric_d = args.metric_dist
 
-    # rovers = ['RR04', 'RR06', 'RR08']
-    cam_types = ['t265', 'l515']
     rovers = ['RR01', 'RR04', 'RR06', 'RR08']
+    cam_types = ['t265', 'l515']
     sim = RoverMotFrontend(
         ped_bag=ped_bag,
         mot_params=PARAMS,
@@ -133,7 +140,7 @@ if __name__ == '__main__':
     last_printed_metrics = sim.frame_time
     for framenum in frame_range:
 
-        realign = args.realign and framenum >= START_METRIC_FRAME + (0*30) and (framenum - FIRST_FRAME) % (5*30) == 0
+        realign = args.realign and framenum >= START_METRIC_FRAME + (0*30) and (framenum - FIRST_FRAME) % (REALIGN_PERIOD*30) == 0
         if realign:
             print('REALIGN')
         # if framenum < START_METRIC_FRAME:
@@ -175,7 +182,8 @@ if __name__ == '__main__':
     print('final ', end='')
     print_metric_results(sim.full_mes, sim.inconsistencies, sim.mots, mota_only=False)
 
-    if args.yaml_file is not None:
-        with open(args.yaml_file, 'w') as f:
-            import yaml
-            yaml.dump(sim.debug, f)
+    if args.json_file is not None:
+        with open(args.json_file, 'w') as f:
+            import json
+            json_str = json.dumps(sim.debug)
+            print(json_str, file=f)

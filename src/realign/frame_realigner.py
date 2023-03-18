@@ -15,8 +15,10 @@ class FrameRealigner():
         self.new_transforms = dict()
         self.realigns_since_change = dict()
         self.last_change_Tmag = dict()
+        self.T_last = dict()
         for cam in connected_cams:
             self.transforms[cam] = np.eye(4)
+            self.T_last[cam] = np.eye(4)
             self.realigns_since_change[cam] = 0
             self.last_change_Tmag[cam] = 0
         self.detections_min_num = params.detections_min_num
@@ -99,6 +101,7 @@ class FrameRealigner():
         if not np.allclose(self.transforms[cam_id], transform):
             self.realigns_since_change[cam_id] = 0
             self.last_change_Tmag[cam_id] = T_mag(transform @ np.linalg.inv(self.transforms[cam_id]), self.deg2m)
+            self.T_last[cam_id] = np.copy(self.transforms[cam_id])
         else:
             self.realigns_since_change[cam_id] += 1
         self.transforms[cam_id] = transform

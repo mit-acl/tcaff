@@ -13,7 +13,7 @@ from utils.transform import transform
 import clipperpy
 
 # STARTING A LIST OF MAGIC NUMBERS HERE
-NUM_CONES_REQ = 7
+NUM_CONES_REQ = 10
 USE_CLIPPER = False
 ONLY_STRONG_CORRESPONDENCES = True
 ICP_MAX_DIST = 1.0
