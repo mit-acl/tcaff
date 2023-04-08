@@ -10,8 +10,9 @@ from mot.multi_object_tracker import MultiObjectTracker
 from metrics.metric_evaluator import MetricEvaluator
 from metrics.inconsistency_counter import InconsistencyCounter
 from realign.realign_frames import realign_cones, recently_weighted_realign
-from utils.transform import transform, pt_is_seeable, T_mag
+from utils.transform import transform, T_mag
 from utils.debug_help import *
+from utils.cam_utils import pt_is_seeable
 
 T_MAG_STATIC_OBJ_REALIGN_THRESH = 1.5
 SKIP_RR01_IN_VIEW = False

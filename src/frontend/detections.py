@@ -15,7 +15,8 @@ if __name__ == '__main__':
 else:
     from .camera_calibration_mocap.cam_calib_mocap import get_calibrator
 import config.data_params as PARAMS
-from utils.transform import transform, pixel2groundplane
+from utils.transform import transform
+from utils.cam_utils import pixel2groundplane
 
 def bag2poses(bagfile, topic):
     pose_csv = bagfile.message_by_topic(topic)

@@ -85,16 +85,17 @@ if __name__ == '__main__':
         
         # ######### THE REAL ONE IS HEREEE########
         FIRST_FRAME = 15*30
-        # LAST_FRAME = 7650
+        LAST_FRAME = 7650
         START_METRIC_FRAME = 15*30
-        # register_time = 20
+        register_time = 20
         # REALIGN_PERIOD = 1
         
-        # FIRST_FRAME = 125*30
-        LAST_FRAME = 180*30
-        # START_METRIC_FRAME = 125*30
-        register_time = 0
-        REALIGN_PERIOD = 1
+        # for dynamic plotting
+        # FIRST_FRAME = 15*30
+        # LAST_FRAME = 180*30
+        # START_METRIC_FRAME = 15*30
+        # register_time = 0
+        # REALIGN_PERIOD = 1
     ped_bag = str(root / ped_bag)
     for i in range(len(detection_bags)):
         detection_bags[i] = str(root / detection_bags[i])
@@ -107,7 +108,7 @@ if __name__ == '__main__':
     vicon_cones = False
     metric_d = args.metric_dist
 
-    rovers = ['RR01', 'RR04', 'RR06', 'RR08']
+    rovers = ['RR04', 'RR06', 'RR08']
     cam_types = ['t265', 'l515']
     sim = RoverMotFrontend(
         ped_bag=ped_bag,
