@@ -88,7 +88,7 @@ if __name__ == '__main__':
         LAST_FRAME = 7650
         START_METRIC_FRAME = 15*30
         register_time = 20
-        # REALIGN_PERIOD = 1
+        REALIGN_PERIOD = 1
         
         # for dynamic plotting
         # FIRST_FRAME = 15*30
