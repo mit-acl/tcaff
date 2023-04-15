@@ -154,6 +154,7 @@ class RoverMotFrontend():
             
             # even more advanced
             new_d = dump_everything_in_the_whole_world(self.frame_time, framenum, self.rover_names, self.mots[self.num_rovers:], self.detector.get_ordered_detections(['l515']), self.make_gt_list())
+            # new_d = dump_mapping_info(self.frame_time, framenum, self.rover_names, self.mots[self.num_rovers:], self.detector.get_ordered_detections(['l515']))
             self.debug.append(new_d)
             
         # Continues to next frame when robots have new detections
@@ -175,6 +176,7 @@ class RoverMotFrontend():
                 break
 
             for j, (mot, frame) in enumerate(zip([mot1, mot2], [frame1, frame2])):
+                mot.pose = self.detector.detections[i]['t265'].T_WC(self.frame_time, T_BC=np.eye(4), true_pose=False)
                 positions, boxes, feature_vecs = self.detector.get_person_boxes(frame, i, self.cam_types[j], self.frame_time)
                 Zs = []
                 for pos, box in zip(positions, boxes):
