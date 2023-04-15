@@ -2,14 +2,17 @@ import numpy as np
 from numpy.linalg import norm as norm, inv
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial.transform import Rotation as Rot
+from scipy.linalg import logm
 from copy import deepcopy
 
 from .tracker import Tracker
 from config import tracker_params as TRACK_PARAM
 from realign.frame_realigner import FrameRealigner
+from utils.transform import transform
 
 NUM_CAMS = 4
 COV_MAG = .01
+USE_NLML = True
 class MultiObjectTracker():
 
     def __init__(self, camera_id, connected_cams, params):
@@ -45,6 +48,8 @@ class MultiObjectTracker():
         self.cov = np.eye(4) * COV_MAG
         for i in range(50):
             self.recent_detection_list.append(None)
+            
+        self.pose = None
         
 
     def local_data_association(self, Zs, feature_vecs):
@@ -65,7 +70,14 @@ class MultiObjectTracker():
                 d = np.sqrt((z_xy - Hx_xy).T @ np.linalg.inv(tracker.V) @ (z_xy - Hx_xy)).item(0)
                 
                 # Geometry similarity value
-                s_d = 1/self.alpha*d if d < self.Tau_LDA else large_num
+                if not d < self.Tau_LDA:
+                    s_d = large_num
+                elif USE_NLML:
+                    s_d = 1/self.alpha*(2*np.log(2*np.pi) + d**2 + np.log(np.linalg.det(tracker.V)))
+                else:
+                    s_d = 1/self.alpha*d
+                if np.isnan(s_d):
+                    s_d = large_num
                 geometry_scores[i,j] = s_d
                 
                 # Feature similarity value (if geometry is consistent)
@@ -143,7 +155,14 @@ class MultiObjectTracker():
                 d = np.sqrt((z_xy - Hx_xy).T @ np.linalg.inv(tracker.V) @ (z_xy - Hx_xy)).item(0)
                 
                 # Geometry similarity value
-                s_d = 1/self.alpha*d if d < self.Tau_cone else large_num
+                if not d < self.Tau_LDA:
+                    s_d = large_num
+                elif USE_NLML:
+                    s_d = 1/self.alpha*(2*np.log(2*np.pi) + d**2 + np.log(np.linalg.det(tracker.V)))
+                else:
+                    s_d = 1/self.alpha*d
+                if np.isnan(s_d):
+                    s_d = large_num
                 geometry_scores[i,j] = s_d
 
         unassociated = []
@@ -286,14 +305,42 @@ class MultiObjectTracker():
                 R_fa = np.zeros((4, 4))
                 R_fa[0, 0] = T_fa[0, 3]*(self.realigner.realigns_since_change[cam]+1) # for now, just the mag of x and y change
                 R_fa[1, 1] = T_fa[1, 3]*(self.realigner.realigns_since_change[cam]+1) # for now, just the mag of x and y change
-                obs.R = Jac_T @ (self.cov + obs.R) @ Jac_T.T + R_fa
-                # obs.R *= 1 + self.realigner.last_change_Tmag[cam]*(self.realigner.realigns_since_change[cam]+1)
-                # if (cam % NUM_CAMS == 0) != (self.camera_id % NUM_CAMS == 0):
-                # # try:
-                    # if self.realigner.realigns_since_change[cam] > 2 or self.realigner.last_change_Tmag[cam] > 1:
-                        # obs.R *= 10
-                # except:
-                #     import ipdb; ipdb.set_trace()
+                # obs.R = Jac_T @ (self.cov + obs.R) @ Jac_T.T + R_fa
+
+
+
+
+
+                if obs.z is not None:
+                    z_b = transform(inv(self.pose), obs.z.reshape(-1)[:2])
+                    Jac_T = np.array([
+                        [1.0, 0.0, -z_b.item(1)], # should be expressed in body frame, not world frame
+                        [0.0, 1.0, z_b.item(0)], # 
+                        [0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0]
+                    ])
+                    # th_fa = Rot.from_matrix(T_fa[:3,:3]).as_euler('xyz', degrees=False)[2]
+                    # Jac_T = np.array([
+                    #     [1.0, 0.0, -obs.z.item(0)*np.sin(th_fa) - y],
+                    #     [0.0, 1.0, obs.z.item(0)],
+                    #     [0.0, 0.0, 0.0],
+                    #     [0.0, 0.0, 0.0]
+                    # ])
+                    Jac_R = np.zeros((4,4))
+                    Jac_R[:2,:2] = self.realigner.transforms[cam][:2,:2]
+                    Jac_R[2:,2:] = self.realigner.transforms[cam][:2,:2]
+                    Sigma_fa = np.zeros((3,3))
+                    Sigma_fa[0, 0] = T_fa[0, 3]*(self.realigner.realigns_since_change[cam]+1) # for now, just the mag of x and y change
+                    Sigma_fa[1, 1] = T_fa[1, 3]*(self.realigner.realigns_since_change[cam]+1) # for now, just the mag of x and y change
+                    Sigma_fa[2, 2] = Rot.from_matrix(T_fa[:3,:3]).as_euler('xyz', degrees=False)[2] * (self.realigner.realigns_since_change[cam]+1) *.1 #* 8.1712
+                    obs.R = Jac_T @ (Sigma_fa) @ Jac_T.T + Jac_R @ (obs.R) @ Jac_R.T
+                    # obs.R *= 1 + self.realigner.last_change_Tmag[cam]*(self.realigner.realigns_since_change[cam]+1)
+                    # if (cam % NUM_CAMS == 0) != (self.camera_id % NUM_CAMS == 0):
+                    # # try:
+                        # if self.realigner.realigns_since_change[cam] > 2 or self.realigner.last_change_Tmag[cam] > 1:
+                            # obs.R *= 10
+                    # except:
+                    #     import ipdb; ipdb.set_trace()
                 observations.append(obs)
         return observations
 
