@@ -155,7 +155,7 @@ class MultiObjectTracker():
                 d = np.sqrt((z_xy - Hx_xy).T @ np.linalg.inv(tracker.V) @ (z_xy - Hx_xy)).item(0)
                 
                 # Geometry similarity value
-                if not d < self.Tau_LDA:
+                if not d < self.Tau_cone:
                     s_d = large_num
                 elif USE_NLML:
                     s_d = 1/self.alpha*(2*np.log(2*np.pi) + d**2 + np.log(np.linalg.det(tracker.V)))
