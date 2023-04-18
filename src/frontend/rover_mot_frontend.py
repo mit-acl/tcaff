@@ -181,7 +181,7 @@ class RoverMotFrontend():
                 Zs = []
                 for pos, box in zip(positions, boxes):
                     x0, y0, x1, y1 = box
-                    Zs.append(np.array([[pos[0], pos[1], 20, 50]]).T)
+                    Zs.append(np.array([[pos[0], pos[1]]]).T)
                     if self.viewer:
                         cv.rectangle(frame, (int(x0),int(y0)), (int(x1),int(y1)), (0,255,0), 4)
 
@@ -196,7 +196,7 @@ class RoverMotFrontend():
         for mot in self.mots:
             mot.add_observations([obs for obs in observations if obs.destination == mot.camera_id])
             mot.dkf()
-            mot.tracker_manager()
+            mot.track_manager()
             self.ic.add_groups(mot.camera_id, mot.groups_by_id)
             mot.groups_by_id = []
         self.inconsistencies += self.ic.count_inconsistencies()
@@ -207,7 +207,7 @@ class RoverMotFrontend():
             for i, (mot, det) in enumerate(zip(self.mots, self.detector.get_ordered_detections(self.cam_types))):
             # for i, (mot, det) in enumerate(zip(self.mots[self.num_rovers:], self.detector.get_ordered_detections(self.cam_types)[self.num_rovers:])):
 
-                Xs, colors = mot.get_trackers()   
+                Xs, colors = mot.get_tracks()   
 
                 for X, color in zip(Xs, colors):
                     # correct state for local error
@@ -230,11 +230,11 @@ class RoverMotFrontend():
         if run_metrics:
             for mes in self.mes: 
                 for mot, me, dets in zip(self.mots, mes, self.detector.get_ordered_detections(self.cam_types)):
-                    me.update(gt_dict, mot.get_trackers(format='dict'), 
+                    me.update(gt_dict, mot.get_tracks(format='dict'), 
                             T_true=dets.T_WC(self.frame_time), 
                             T_bel=dets.T_WC(self.frame_time, true_pose=False))
             for mot, me, dets in zip(self.mots, self.full_mes, self.detector.get_ordered_detections(self.cam_types)):
-                me.update(gt_dict, mot.get_trackers(format='dict'), 
+                me.update(gt_dict, mot.get_tracks(format='dict'), 
                         T_true=dets.T_WC(self.frame_time), 
                         T_bel=dets.T_WC(self.frame_time, true_pose=False))
 

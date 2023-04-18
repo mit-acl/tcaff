@@ -5,8 +5,8 @@ from scipy.spatial.transform import Rotation as Rot
 from scipy.linalg import logm
 from copy import deepcopy
 
-from .tracker import Tracker
-from config import tracker_params as TRACK_PARAM
+from .track import Track
+from config.track_params import TrackParams
 from realign.frame_realigner import FrameRealigner
 from utils.transform import transform
 
@@ -22,7 +22,6 @@ class MultiObjectTracker():
             connected_cams=connected_cams,
             params=params 
         )
-        # TODO: Tune for Tau
         self.Tau_init = params.Tau_LDA
         self.Tau_LDA = params.Tau_LDA
         self.Tau_GDA = params.Tau_GDA
@@ -31,16 +30,16 @@ class MultiObjectTracker():
         
         self.alpha = params.alpha
         self.kappa = params.kappa
-        self.trackers = []
-        self.new_trackers = []
-        self.old_trackers = []
+        self.tracks = []
+        self.new_tracks = []
+        self.old_tracks = []
         self.cones = []
         self.new_cones = []
         self.next_available_id = 0
-        self.n_meas_to_init_tracker = params.n_meas_to_init_tracker
+        self.n_meas_to_init_track = params.n_meas_to_init_track
         
         self.camera_id = camera_id
-        self.tracker_mapping = dict()
+        self.track_mapping = dict()
         self.unassociated_obs = []
         self.inconsistencies = 0
         self.groups_by_id = []
@@ -56,109 +55,85 @@ class MultiObjectTracker():
         frame_detections = []
         for z in Zs:
             frame_detections.append(z[0:2,:].reshape(-1,1))
-        self.recent_detection_list.insert(0, frame_detections)
-        self.recent_detection_list = self.recent_detection_list[:-1]
-        all_trackers = self.trackers + self.new_trackers
-        geometry_scores = np.zeros((len(all_trackers), len(Zs)))
-        appearance_scores = np.zeros((len(all_trackers), len(Zs)))
+        all_tracks = self.tracks + self.new_tracks
+        geometry_scores = np.zeros((len(all_tracks), len(Zs)))
         large_num = 1000
-        for i, tracker in enumerate(all_trackers):
-            Hx_xy = (tracker.H @ tracker.state)[0:2,:]
+        for i, track in enumerate(all_tracks):
+            Hx_xy = (track.H @ track.state)[0:2,:]
             for j, (Z, aj) in enumerate(zip(Zs, feature_vecs)):
                 z_xy = Z[0:2,:]
                 # Mahalanobis distance
-                d = np.sqrt((z_xy - Hx_xy).T @ np.linalg.inv(tracker.V) @ (z_xy - Hx_xy)).item(0)
+                d = np.sqrt((z_xy - Hx_xy).T @ np.linalg.inv(track.V) @ (z_xy - Hx_xy)).item(0)
                 
                 # Geometry similarity value
                 if not d < self.Tau_LDA:
                     s_d = large_num
                 elif USE_NLML:
-                    s_d = 1/self.alpha*(2*np.log(2*np.pi) + d**2 + np.log(np.linalg.det(tracker.V)))
+                    s_d = 1/self.alpha*(2*np.log(2*np.pi) + d**2 + np.log(np.linalg.det(track.V)))
                 else:
                     s_d = 1/self.alpha*d
                 if np.isnan(s_d):
                     s_d = large_num
                 geometry_scores[i,j] = s_d
-                
-                # Feature similarity value (if geometry is consistent)
-                if s_d < 1:
-                    s_a = float('inf')
-                    for ai in tracker.feature_vecs:
-                        s_a_new = 1 - (aj.T @ ai) / (norm(aj)*norm(ai))
-                        s_a = min(s_a, s_a_new)
-                else:
-                    s_a = 1
-                appearance_scores[i,j] = s_a
 
         unassociated = []
-        product_scores = geometry_scores * appearance_scores # element-wise multiplication
         # augment cost to add option for no associations
         hungarian_cost = np.concatenate([
-            np.concatenate([product_scores, np.ones(product_scores.shape)], axis=1),
-            np.ones((product_scores.shape[0], 2*product_scores.shape[1]))], axis=0)
+            np.concatenate([geometry_scores, np.ones(geometry_scores.shape)], axis=1),
+            np.ones((geometry_scores.shape[0], 2*geometry_scores.shape[1]))], axis=0)
         row_ind, col_ind = linear_sum_assignment(hungarian_cost)
         for t_idx, z_idx in zip(row_ind, col_ind):
-            # tracker and measurement associated together
-            if t_idx < len(all_trackers) and z_idx < len(Zs):
-                assert product_scores[t_idx,z_idx] < 1
-                is_current_tracker = t_idx < len(self.trackers)
-                if is_current_tracker and all_trackers[t_idx].seen_by_this_camera:
-                    all_trackers[t_idx].update(Zs[z_idx])
-                elif is_current_tracker and not all_trackers[t_idx].seen_by_this_camera:
-                    all_trackers[t_idx].update(Zs[z_idx], feature_vecs[z_idx])
-                    all_trackers[t_idx].seen_by_this_camera = True
-                    all_trackers[t_idx].include_appearance_in_obs()
-                else:
-                    all_trackers[t_idx].update(Zs[z_idx], feature_vecs[z_idx])            
+            # track and measurement associated together
+            if t_idx < len(all_tracks) and z_idx < len(Zs):
+                assert geometry_scores[t_idx,z_idx] < 1
+                all_tracks[t_idx].update([Zs[z_idx]])       
             # unassociated measurement
             elif z_idx < len(Zs):
                 unassociated.append(z_idx)
-            # unassociated tracker or augmented part of matrix
+            # unassociated track or augmented part of matrix
             else:
                 continue
             
-        # if there are no trackers, hungarian matrix will be empty, handle separately
-        if len(all_trackers) == 0:
+        # if there are no tracks, hungarian matrix will be empty, handle separately
+        if len(all_tracks) == 0:
             for z_idx in range(len(Zs)):
                 unassociated.append(z_idx)
 
-        for tracker in self.new_trackers:
-            if tracker.frames_seen >= self.n_meas_to_init_tracker:
-                tracker.include_appearance_in_obs()
-                self.trackers.append(tracker)
-                self.tracker_mapping[tracker.id] = tracker.id
-                self.new_trackers.remove(tracker)
-            elif not tracker.seen:
-                self.new_trackers.remove(tracker)
+        for track in self.new_tracks:
+            if track.frames_seen >= self.n_meas_to_init_track:
+                self.tracks.append(track)
+                self.track_mapping[track.id] = track.id
+                self.new_tracks.remove(track)
+            elif not track.seen:
+                self.new_tracks.remove(track)
 
         for z_idx in unassociated:
-            new_tracker = Tracker(self.camera_id, self.next_available_id, Zs[z_idx], feature_vecs[z_idx])
-            new_tracker.update(Zs[z_idx])
-            new_tracker.seen_by_this_camera = True
-            self.new_trackers.append(new_tracker)
+            new_track = Track(self.camera_id, self.next_available_id, TrackParams(), [Zs[z_idx]], np.vstack([Zs[z_idx], np.zeros((2,1))]))
+            new_track.update([Zs[z_idx]])
+            self.new_tracks.append(new_track)
             self.next_available_id += 1
 
-        for tracker in self.trackers + self.new_trackers:
-            tracker.predict()
+        for track in self.tracks + self.new_tracks:
+            track.predict()
             
     def cone_update(self, Zs):
         for i in range(len(Zs)):
-            Zs[i] = np.concatenate([Zs[i][:2,:].reshape(-1), [.1, .15]]).reshape((4, 1))
+            Zs[i] = Zs[i][:2,:].reshape(-1).reshape((2, 1))
         all_cones = self.cones + self.new_cones
         geometry_scores = np.zeros((len(all_cones), len(Zs)))
         large_num = 1000
-        for i, tracker in enumerate(all_cones):
-            Hx_xy = (tracker.H @ tracker.state)[0:2,:]
+        for i, track in enumerate(all_cones):
+            Hx_xy = (track.H @ track.state)[0:2,:]
             for j, Z in enumerate(Zs):
                 z_xy = Z[0:2,:]
                 # Mahalanobis distance
-                d = np.sqrt((z_xy - Hx_xy).T @ np.linalg.inv(tracker.V) @ (z_xy - Hx_xy)).item(0)
+                d = np.sqrt((z_xy - Hx_xy).T @ np.linalg.inv(track.V) @ (z_xy - Hx_xy)).item(0)
                 
                 # Geometry similarity value
-                if not d < self.Tau_LDA:
+                if not d < self.Tau_cone:
                     s_d = large_num
                 elif USE_NLML:
-                    s_d = 1/self.alpha*(2*np.log(2*np.pi) + d**2 + np.log(np.linalg.det(tracker.V)))
+                    s_d = 1/self.alpha*(2*np.log(2*np.pi) + d**2 + np.log(np.linalg.det(track.V)))
                 else:
                     s_d = 1/self.alpha*d
                 if np.isnan(s_d):
@@ -173,35 +148,34 @@ class MultiObjectTracker():
             np.ones((product_scores.shape[0], 2*product_scores.shape[1]))], axis=0)
         row_ind, col_ind = linear_sum_assignment(hungarian_cost)
         for t_idx, z_idx in zip(row_ind, col_ind):
-            # tracker and measurement associated together
+            # track and measurement associated together
             if t_idx < len(all_cones) and z_idx < len(Zs):
                 assert product_scores[t_idx,z_idx] < 1
-                is_current_tracker = t_idx < len(self.cones)
-                all_cones[t_idx].update(Zs[z_idx])        
+                all_cones[t_idx].update([Zs[z_idx]])        
             # unassociated measurement
             elif z_idx < len(Zs):
                 unassociated.append(z_idx)
-            # unassociated tracker or augmented part of matrix
+            # unassociated track or augmented part of matrix
             else:
                 continue
             
-        # if there are no trackers, hungarian matrix will be empty, handle separately
+        # if there are no tracks, hungarian matrix will be empty, handle separately
         if len(all_cones) == 0:
             for z_idx in range(len(Zs)):
                 unassociated.append(z_idx)
 
         for cone in self.new_cones:
-            if cone.frames_seen >= self.n_meas_to_init_tracker:
+            if cone.frames_seen >= self.n_meas_to_init_track:
                 self.cones.append(cone)
                 self.new_cones.remove(cone)
             elif not cone.seen:
                 self.new_cones.remove(cone)
 
         for z_idx in unassociated:
-            new_cone = Tracker(self.camera_id, self.next_available_id, Zs[z_idx], feature_vec=[], keep_history=False)
-            new_cone.A = np.eye(6); new_cone.A[4:,4:] = np.zeros((2,2))
-            new_cone.Q = np.eye(6)
-            new_cone.update(Zs[z_idx])
+            new_cone = Track(self.camera_id, self.next_available_id, TrackParams(), [Zs[z_idx]], np.vstack([Zs[z_idx], np.zeros((2,1))]))
+            new_cone.A = np.eye(4); new_cone.A[2:,2:] = np.zeros((2,2))
+            new_cone.Q = np.eye(4)
+            new_cone.update([np.copy(Zs[z_idx])])
             new_cone.seen_by_this_camera = True
             self.new_cones.append(new_cone)
             self.next_available_id += 1
@@ -214,22 +188,20 @@ class MultiObjectTracker():
                 self.cones.remove(cone)
 
     def dkf(self):  
-        for tracker in self.trackers + self.new_trackers:
-            tracker.correction()
+        for track in self.tracks + self.new_tracks:
+            track.correction()
 
-    def tracker_manager(self):
+    def track_manager(self):
         # no initialization necessary if no unassociated observations
         if not self.unassociated_obs:
             self.manage_deletions()
             return
         tracked_states = []
-        for tracker in self.trackers + self.new_trackers:
-            tracker.include_appearance_in_obs()
-            m = tracker.observation_msg()
-            m.xbar = tracker.state
+        for track in self.tracks + self.new_tracks:
+            m = track.get_measurement_info(track.R)
+            m.xbar = track.state
             tracked_states.append(m)
         geometry_scores = np.zeros((len(self.unassociated_obs), len(self.unassociated_obs + tracked_states)))
-        appearance_scores = np.zeros((len(self.unassociated_obs), len(self.unassociated_obs + tracked_states)))
         # TODO: This iteration stuff happens in three places now. Clean up and put in some function
         for i in range(len(self.unassociated_obs)):
             xi_xy = self.unassociated_obs[i].xbar[0:2,:]
@@ -244,17 +216,6 @@ class MultiObjectTracker():
                 s_d = 1/self.alpha*d if d < self.Tau_GDA else 1
                 geometry_scores[i,j] = s_d
                 
-                # Appearance similarity value
-                if s_d < 1:
-                    s_a = float('inf')
-                    for ai in self.unassociated_obs[i].a:
-                        for aj in self.unassociated_obs[j].a:
-                            s_a_new = 1 - (aj.T @ ai) / (norm(aj)*norm(ai))
-                            s_a = min(s_a, s_a_new)
-                else:
-                    s_a = 1
-                appearance_scores[i,j] = s_a
-                
             for j in range(len(tracked_states)):
                 j_gs = j+len(self.unassociated_obs) # j for indexing into geometry_scores
                 xj_xy = tracked_states[j].xbar[0:2,:]
@@ -264,24 +225,12 @@ class MultiObjectTracker():
                 # Geometry similarity value
                 s_d = 1/self.alpha*d if d < self.Tau_GDA else 1
                 geometry_scores[i,j_gs] = s_d
-                
-                # Appearance similarity value
-                if s_d < 1:
-                    s_a = float('inf')
-                    for ai in self.unassociated_obs[i].a:
-                        for aj in tracked_states[j].a:
-                            s_a_new = 1 - (aj.T @ ai) / (norm(aj)*norm(ai))
-                            s_a = min(s_a, s_a_new)
-                else:
-                    s_a = 1
-                appearance_scores[i,j_gs] = s_a
 
-        product_scores = geometry_scores * appearance_scores # element-wise multiplication
-        tracker_groups = self._get_tracker_groups(product_scores)
+        track_groups = self._get_track_groups(geometry_scores)
         
-        self.groups_by_id = self._create_trackers(tracker_groups, tracked_states)
+        self.groups_by_id = self._create_tracks(track_groups, tracked_states)
         unassociated_obs = self.unassociated_obs
-        len_unassociated_obs = self.add_observations(unassociated_obs, transform=False)
+        len_unassociated_obs = self.add_observations(unassociated_obs)
             # transform has already occured at this point
         assert len_unassociated_obs == 0
         
@@ -290,34 +239,19 @@ class MultiObjectTracker():
                 
     def get_observations(self):
         observations = []
-        for tracker in self.trackers:
-            tracker_obs = tracker.observation_msg()
+        for track in self.tracks:   
+            track_obs = track.get_measurement_info(track.R)
             for cam in self.connected_cams:
-                obs = deepcopy(tracker_obs)
-                obs.add_destination(cam)
-                Jac_T = np.zeros((4,4))
-                Jac_T[:2, :2] = self.realigner.transforms[cam][:2, :2]
-                Jac_T[2:, 2:] = self.realigner.transforms[cam][:2, :2]
-                try:
-                    T_fa = self.realigner.transforms[cam] @ inv(self.realigner.T_last[cam])
-                except:
-                    import ipdb; ipdb.set_trace()
-                R_fa = np.zeros((4, 4))
-                R_fa[0, 0] = T_fa[0, 3]*(self.realigner.realigns_since_change[cam]+1) # for now, just the mag of x and y change
-                R_fa[1, 1] = T_fa[1, 3]*(self.realigner.realigns_since_change[cam]+1) # for now, just the mag of x and y change
-                # obs.R = Jac_T @ (self.cov + obs.R) @ Jac_T.T + R_fa
+                T_fa = self.realigner.transforms[cam] @ inv(self.realigner.T_last[cam])
 
-
-
-
-
-                if obs.z is not None:
-                    z_b = transform(inv(self.pose), obs.z.reshape(-1)[:2])
+                R = np.copy(track.R)
+                if track_obs.zs is not None:
+                    # This needs to be fixed so that it is correct when being sent to other camera (rather than
+                    # being written for being received)
+                    z_b = transform(inv(self.pose), track_obs.zs[0].reshape(-1)[:2])
                     Jac_T = np.array([
                         [1.0, 0.0, -z_b.item(1)], # should be expressed in body frame, not world frame
                         [0.0, 1.0, z_b.item(0)], # 
-                        [0.0, 0.0, 0.0],
-                        [0.0, 0.0, 0.0]
                     ])
                     # th_fa = Rot.from_matrix(T_fa[:3,:3]).as_euler('xyz', degrees=False)[2]
                     # Jac_T = np.array([
@@ -326,144 +260,133 @@ class MultiObjectTracker():
                     #     [0.0, 0.0, 0.0],
                     #     [0.0, 0.0, 0.0]
                     # ])
-                    Jac_R = np.zeros((4,4))
-                    Jac_R[:2,:2] = self.realigner.transforms[cam][:2,:2]
-                    Jac_R[2:,2:] = self.realigner.transforms[cam][:2,:2]
+                    Jac_R = self.realigner.transforms[cam][:2,:2]
                     Sigma_fa = np.zeros((3,3))
                     Sigma_fa[0, 0] = T_fa[0, 3]*(self.realigner.realigns_since_change[cam]+1) # for now, just the mag of x and y change
                     Sigma_fa[1, 1] = T_fa[1, 3]*(self.realigner.realigns_since_change[cam]+1) # for now, just the mag of x and y change
                     Sigma_fa[2, 2] = Rot.from_matrix(T_fa[:3,:3]).as_euler('xyz', degrees=False)[2] * (self.realigner.realigns_since_change[cam]+1) *.1 #* 8.1712
-                    obs.R = Jac_T @ (Sigma_fa) @ Jac_T.T + Jac_R @ (obs.R) @ Jac_R.T
-                    # obs.R *= 1 + self.realigner.last_change_Tmag[cam]*(self.realigner.realigns_since_change[cam]+1)
-                    # if (cam % NUM_CAMS == 0) != (self.camera_id % NUM_CAMS == 0):
-                    # # try:
-                        # if self.realigner.realigns_since_change[cam] > 2 or self.realigner.last_change_Tmag[cam] > 1:
-                            # obs.R *= 10
-                    # except:
-                    #     import ipdb; ipdb.set_trace()
+                    R = Jac_T @ (Sigma_fa) @ Jac_T.T + Jac_R @ (track.R) @ Jac_R.T
+                if cam in self.realigner.transforms:
+                    T = inv(self.realigner.transforms[cam])
+                else:
+                    T = np.eye(4)
+                obs = track.get_measurement_info(track.R, T=T) # TODO: figure out R
+                obs.add_destination(cam)
                 observations.append(obs)
         return observations
 
-    def add_observations(self, observations, transform=True):
+    def add_observations(self, observations):
         # TODO: Probably not the best memory usage here...
         observations = deepcopy(observations)
         self.unassociated_obs = []
         # Process each observation
         for obs in observations:
             assert obs.destination == self.camera_id
-            if transform:
-                obs = self.realigner.transform_obs(obs)
-            # Check if we recognize the tracker id
-            if obs.tracker_id in self.tracker_mapping: 
-                target_tracker_id = self.tracker_mapping[obs.tracker_id]
-                for tracker in self.trackers:
-                    if tracker.id == target_tracker_id:
-                        tracker.observation_update(obs)
+            # Check if we recognize the track id
+            if obs.track_id in self.track_mapping: 
+                target_track_id = self.track_mapping[obs.track_id]
+                for track in self.tracks:
+                    if track.id == target_track_id:
+                        track.add_measurement(obs)
                         break
             else:
                 matched = False
-                # Check if the incoming message has already been paired to one of our trackers
+                # Check if the incoming message has already been paired to one of our tracks
                 for mid in obs.mapped_ids:
-                    if mid in self.tracker_mapping:
+                    if mid in self.track_mapping:
                         matched = True
-                        target_tracker_id = self.tracker_mapping[mid]
-                        self.tracker_mapping[obs.tracker_id] = target_tracker_id
-                        for tracker in self.trackers:
-                            if tracker.id == target_tracker_id:
-                                tracker.observation_update(obs)
+                        target_track_id = self.track_mapping[mid]
+                        self.track_mapping[obs.track_id] = target_track_id
+                        for track in self.tracks:
+                            if track.id == target_track_id:
+                                track.add_measurement(obs)
                                 break
                         break
-                # Add to unassociated_obs for tracker initialization if this is new
+                # Add to unassociated_obs for track initialization if this is new
                 if not matched:                        
-                    # assert obs.has_appearance_info, f'From camera: {self.camera_id}, No appearance info: {obs}'
-                    # TODO: I can only do this because I am not using apperance vectors right now!!!
-                    if not obs.has_appearance_info:
-                        obs.add_appearance([np.ones((2, 1))])
-                    # if np.trace(obs.R) < 100:
-                    if True:
-                        self.unassociated_obs.append(obs)
+                    self.unassociated_obs.append(obs)
         return len(self.unassociated_obs)
             
-    def get_trackers(self, format='state_color'):
+    def get_tracks(self, format='state_color'):
         # TODO: change what we're returning here
         if format == 'state_color':
             Xs = []
             colors = []
-            for tracker in self.trackers:
-                assert tracker.id[0] == self.camera_id
-                Xs.append(tracker.state)
-                colors.append(tracker.color)
+            for track in self.tracks:
+                assert track.id[0] == self.camera_id
+                Xs.append(track.state)
+                colors.append(track.color)
             return Xs, colors
         elif format == 'dict':
-            tracker_dict = dict()
-            for tracker in self.trackers:
-                tracker_dict[tracker.id] = np.array(tracker.state[0:2,:].reshape(-1))
-            return tracker_dict
+            track_dict = dict()
+            for track in self.tracks:
+                track_dict[track.id] = np.array(track.state[0:2,:].reshape(-1))
+            return track_dict
         elif format == 'list':
-            tracker_list = []
-            for tracker in self.trackers:
-                tracker_list.append(tracker.state[0:2,:].reshape(-1).tolist())
-            print(tracker_list)
-            return tracker_list
+            track_list = []
+            for track in self.tracks:
+                track_list.append(track.state[0:2,:].reshape(-1).tolist())
+            print(track_list)
+            return track_list
         else:
             print('you cannot do that')
             assert False
         
-    def get_recent_detections(self, from_trackers=False):
-        if from_trackers:
+    def get_recent_detections(self, from_tracks=False):
+        if from_tracks:
             recent_detections = []
-            for tracker in self.trackers:
-                recent_detections.append(tracker.recent_detections)
+            for track in self.tracks:
+                recent_detections.append(track.recent_detections)
             return recent_detections
         else: # raw detections
             return self.recent_detection_list
         
     def frame_realign(self):
-        self.realigner.realign(self.trackers + self.old_trackers)
-        self.realigner.rectify_detections(self.trackers + self.old_trackers)
+        self.realigner.realign(self.tracks + self.old_tracks)
+        self.realigner.rectify_detections(self.tracks + self.old_tracks)
         self.Tau_LDA = self.realigner.tolerance_scale * self.Tau_init
 
-    def _get_tracker_groups(self, similarity_scores):
+    def _get_track_groups(self, similarity_scores):
         # TODO: Maximum clique kind of thing going on here...
         # Handle better
 
-        tracker_groups = []
-        new_tracker_groups = []
+        track_groups = []
+        new_track_groups = []
         for i in range(similarity_scores.shape[0]):
             group = set()
             for j in range(similarity_scores.shape[0]):
                 if similarity_scores[i,j] < .1: # TODO: Magic number here?
                     group.add(j)
-            tracker_groups.append(group)
+            track_groups.append(group)
 
-        while tracker_groups: 
-            g1 = tracker_groups.pop(0)
+        while track_groups: 
+            g1 = track_groups.pop(0)
             added = []
             for member in g1:
-                for g2 in new_tracker_groups:
+                for g2 in new_track_groups:
                     if member in g2:
-                        new_tracker_groups.remove(g2)
+                        new_track_groups.remove(g2)
                         g2 = g2.union(g1)
-                        new_tracker_groups.append(g2)
+                        new_track_groups.append(g2)
                         added.append(g2)
             if not added:
-                new_tracker_groups.append(g1)
+                new_track_groups.append(g1)
             elif len(added) == 1:
                 continue
             else:
                 for g in added[1:]:
-                    new_tracker_groups.remove(added[0])
-                    if g in new_tracker_groups:
-                        new_tracker_groups.remove(g)
+                    new_track_groups.remove(added[0])
+                    if g in new_track_groups:
+                        new_track_groups.remove(g)
                     added[0] = added[0].union(g)
-                    new_tracker_groups.append(added[0])
+                    new_track_groups.append(added[0])
         
         # # associate with local indexes
         STOP_INCONSISTENCIES = True
         # TODO: This is a simple hack. It improves MOT performance, but can also lead to hackish results (gruops with common elements)
         if STOP_INCONSISTENCIES:
             if similarity_scores.shape[0] != similarity_scores.shape[1]:
-                for group in new_tracker_groups:
+                for group in new_track_groups:
                     for i in group:
                         local_idx = np.argmin(similarity_scores[i,similarity_scores.shape[0]:similarity_scores.shape[1]])
                         local_idx += similarity_scores.shape[0]
@@ -471,20 +394,20 @@ class MultiObjectTracker():
                             group.add(local_idx)
                             break
             # need_merging = []
-            # for group in new_tracker_groups:
-            #     for other_group in new_tracker_groups:
+            # for group in new_track_groups:
+            #     for other_group in new_track_groups:
             #         if group == other_group: continue
             #         for el in group:
             #             if el in other_group:
             #                 need_merging.append((group, other_group))
             #                 break
             # for pair in need_merging:
-            #     if pair[0] in new_tracker_groups and pair[1] in new_tracker_groups:
-            #         new_tracker_groups.remove(pair[0]); new_tracker_groups.remove(pair[1])
-            #         new_tracker_groups.append(pair[0].union(pair[1]))    
+            #     if pair[0] in new_track_groups and pair[1] in new_track_groups:
+            #         new_track_groups.remove(pair[0]); new_track_groups.remove(pair[1])
+            #         new_track_groups.append(pair[0].union(pair[1]))    
         else:
             if similarity_scores.shape[0] != similarity_scores.shape[1]:
-                for group in new_tracker_groups:
+                for group in new_track_groups:
                     to_add = set()
                     for i in group:
                         local_idx = np.argmin(similarity_scores[i,similarity_scores.shape[0]:similarity_scores.shape[1]])
@@ -494,95 +417,88 @@ class MultiObjectTracker():
                             # break
                     group = group.union(to_add)
         
-        return new_tracker_groups
+        return new_track_groups
     
-    def _create_trackers(self, tracker_groups, tracked_states):
+    def _create_tracks(self, track_groups, tracked_states):
         groups_by_id = list()
-        for group in tracker_groups:
+        for group in track_groups:
             group_by_id = list()
-            local_tracker_id = None
-            mean_xbar = np.zeros((6,1))
+            local_track_id = None
+            mean_xbar = np.zeros((4,1))
             group_size = 0
-            appearance_vecs = []
             
-            # Assign local tracker id
+            # Assign local track id
             for index in group:
                 if index >= len(self.unassociated_obs):
-                    # If associated with a currently "new" tracker
-                    if index >= len(self.unassociated_obs) + len(self.trackers):
-                        t = self.new_trackers[index-(len(self.unassociated_obs)+len(self.trackers))]
-                        self.trackers.append(t)
-                        self.tracker_mapping[t.id] = t.id
-                        self.new_trackers.remove(t)
-                    # assert local_tracker_id == None or local_tracker_id == tracked_states[index-len(self.unassociated_obs)].tracker_id, \
-                    #      f'1: {local_tracker_id}, 2: {tracked_states[index-len(self.unassociated_obs)].tracker_id}'
-                    if local_tracker_id != None and local_tracker_id != tracked_states[index-len(self.unassociated_obs)].tracker_id:
+                    # If associated with a currently "new" track
+                    if index >= len(self.unassociated_obs) + len(self.tracks):
+                        t = self.new_tracks[index-(len(self.unassociated_obs)+len(self.tracks))]
+                        self.tracks.append(t)
+                        self.track_mapping[t.id] = t.id
+                        self.new_tracks.remove(t)
+                    # assert local_track_id == None or local_track_id == tracked_states[index-len(self.unassociated_obs)].track_id, \
+                    #      f'1: {local_track_id}, 2: {tracked_states[index-len(self.unassociated_obs)].track_id}'
+                    if local_track_id != None and local_track_id != tracked_states[index-len(self.unassociated_obs)].track_id:
                         # print('yeah it happened')
                         self.inconsistencies += 1
-                    local_tracker_id = tracked_states[index-len(self.unassociated_obs)].tracker_id
-                    group_by_id.append(tracked_states[index-len(self.unassociated_obs)].tracker_id)
+                    local_track_id = tracked_states[index-len(self.unassociated_obs)].track_id
+                    group_by_id.append(tracked_states[index-len(self.unassociated_obs)].track_id)
                     continue
-                elif self.unassociated_obs[index].tracker_id[0] == self.camera_id:
-                    # assert local_tracker_id == None or local_tracker_id == self.unassociated_obs[index].tracker_id, \
-                    #     f'1: {local_tracker_id}, 2: {self.unassociated_obs[index].tracker_id}'
-                    if local_tracker_id != None and local_tracker_id != self.unassociated_obs[index].tracker_id:
+                elif self.unassociated_obs[index].track_id[0] == self.camera_id:
+                    # assert local_track_id == None or local_track_id == self.unassociated_obs[index].track_id, \
+                    #     f'1: {local_track_id}, 2: {self.unassociated_obs[index].track_id}'
+                    if local_track_id != None and local_track_id != self.unassociated_obs[index].track_id:
                         # print('yeah it happened')
                         self.inconsistencies += 1
-                    local_tracker_id = self.unassociated_obs[index].tracker_id
-                group_by_id.append(self.unassociated_obs[index].tracker_id)
+                    local_track_id = self.unassociated_obs[index].track_id
+                group_by_id.append(self.unassociated_obs[index].track_id)
                 
-                # if this is an unassociated observation (not a currently tracked tracker)
+                # if this is an unassociated observation (not a currently tracked track)
                 if index < len(self.unassociated_obs):
                     mean_xbar += self.unassociated_obs[index].xbar
                     group_size += 1
-                    appearance_vecs += self.unassociated_obs[index].a
-            if local_tracker_id == None:
+            if local_track_id == None:
                 mean_xbar /= group_size
-                local_tracker_id = (self.camera_id, self.next_available_id)
-                new_tracker = Tracker(self.camera_id, self.next_available_id, mean_xbar[0:4,:], appearance_vecs)
-                self.trackers.append(new_tracker)
+                local_track_id = (self.camera_id, self.next_available_id)
+                new_track = Track(self.camera_id, self.next_available_id, TrackParams(), [mean_xbar[0:4,:]], mean_xbar)                
+                self.tracks.append(new_track)
                 self.next_available_id += 1
-                group_by_id.append(local_tracker_id)
-            else:
-                for tracker in self.trackers:
-                    if tracker.id == local_tracker_id:
-                        tracker.add_appearance_gallery(appearance_vecs)
-                        break
+                group_by_id.append(local_track_id)
 
             for index in group:
                 if index >= len(self.unassociated_obs):
                     continue
-                self.tracker_mapping[self.unassociated_obs[index].tracker_id] = local_tracker_id
+                self.track_mapping[self.unassociated_obs[index].track_id] = local_track_id
             groups_by_id.append(group_by_id)
         
         return groups_by_id
         
     def manage_deletions(self):
-        for tracker in self.old_trackers:
-            tracker.cycle()
-            if tracker.dead_cnt > TRACK_PARAM.n_recent_dets:
-                self.old_trackers.remove(tracker)
-        for tracker in self.trackers + self.new_trackers:
-            tracker.cycle()
-            if tracker.ell > self.kappa:
-                self.trackers.remove(tracker)
-                self.old_trackers.append(tracker)
-                tracker.died()
+        for track in self.old_tracks:
+            track.cycle()
+            if track.dead_cnt > TrackParams().n_dets:
+                self.old_tracks.remove(track)
+        for track in self.tracks + self.new_tracks:
+            track.cycle()
+            if track.ell > self.kappa:
+                self.tracks.remove(track)
+                self.old_tracks.append(track)
+                track.died()
             
     def __str__(self):
         return_str = ''
         return_str += f'Camera {self.camera_id}\n'
-        if self.trackers:
-            return_str += 'Trackers:\n'
-            for t in self.trackers:
+        if self.tracks:
+            return_str += 'Tracks:\n'
+            for t in self.tracks:
                 return_str += f'\t{t}\n'
-        if self.new_trackers:
-            return_str += 'New Trackers:\n'
-            for t in self.new_trackers:
+        if self.new_tracks:
+            return_str += 'New Tracks:\n'
+            for t in self.new_tracks:
                 return_str += f'\t{t}\n'
-        if self.tracker_mapping:
+        if self.track_mapping:
             return_str += 'Mappings:\n'
-            for global_t, local_t in self.tracker_mapping.items():
+            for global_t, local_t in self.track_mapping.items():
                 return_str += f'\t{global_t} --> {local_t}\n'
         # return_str += ''
         return return_str

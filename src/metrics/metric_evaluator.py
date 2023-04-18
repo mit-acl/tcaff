@@ -99,7 +99,7 @@ def print_metric_results(mes, inconsistencies, agents, mota_only=True):
     switch = get_avg_metric('num_switches', mes, divide_by_frames=True)
     precision = get_avg_metric('precision', mes)
     recall = get_avg_metric('recall', mes)
-    total_num_tracks = sum([len(a.tracker_mapping) / len(agents) for a in agents]) / len(agents)
+    total_num_tracks = sum([len(a.track_mapping) / len(agents) for a in agents]) / len(agents)
     incon_per_track = inconsistencies / total_num_tracks if total_num_tracks else 0.0
 
     print(f'mota: {mota}')

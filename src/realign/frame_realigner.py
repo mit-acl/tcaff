@@ -2,8 +2,8 @@ import numpy as np
 from numpy.linalg import inv
 from scipy.spatial.transform import Rotation as Rot
 
-from config import tracker_params as TRACK_PARAM
-from mot.observation_msg import ObservationMsg
+from config.track_params import TrackParams
+from mot.measurement_info import MeasurementInfo
 from utils.transform import transform, T_mag
 from realign.wls import wls
 
@@ -137,7 +137,7 @@ class FrameRealigner():
             if cam_num in tracker.recent_detections:
                 dets.append(tracker.recent_detections[cam_num])
             else:
-                dets.append(np.zeros((TRACK_PARAM.n_recent_dets, 3)) * np.nan)
+                dets.append(np.zeros((TrackParams().n_recent_dets, 3)) * np.nan)
         return dets
     
     def detection_pairs_2_ordered_arrays(self, detection_list1, detection_list2):
