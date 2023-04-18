@@ -117,9 +117,9 @@ class Detections():
             T_BC = self.T_BC
         idx = self.idx(time)
         if true_pose:
-            return self.data[idx]['T_WB_true'] @ self.T_BC
+            return self.data[idx]['T_WB_true'] @ T_BC
         else:
-            return self.data[idx]['T_WB_bel'] @ self.T_BC
+            return self.data[idx]['T_WB_bel'] @ T_BC
             
     def at(self, time):
         idx = self.idx(time)
@@ -412,7 +412,7 @@ def get_cone_detections(yamlfile='/home/masonbp/ford-project/data/dynamic-final/
             )
         else:
             cone_detections.append(
-                ConeDetections(yamlfile=yamlfile.format(rover), T_BC=T_BCs[rover])
+                ConeDetections(yamlfile=yamlfile.format(rover), T_BC=np.array(T_BCs[rover]).reshape((4,4)))
             )
         
     return cone_detections

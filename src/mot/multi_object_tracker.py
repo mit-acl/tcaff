@@ -242,16 +242,17 @@ class MultiObjectTracker():
         for track in self.tracks:   
             track_obs = track.get_measurement_info(track.R)
             for cam in self.connected_cams:
-                T_fa = self.realigner.transforms[cam] @ inv(self.realigner.T_last[cam])
+                T_fa = inv(self.realigner.transforms[cam] @ inv(self.realigner.T_last[cam]))
 
                 R = np.copy(track.R)
                 if track_obs.zs is not None:
                     # This needs to be fixed so that it is correct when being sent to other camera (rather than
                     # being written for being received)
-                    z_b = transform(inv(self.pose), track_obs.zs[0].reshape(-1)[:2])
+                    # z_b = transform(inv(self.pose), track_obs.zs[0].reshape(-1)[:2])
+                    z = track_obs.zs[0].reshape(-1)[:2]
                     Jac_T = np.array([
-                        [1.0, 0.0, -z_b.item(1)], # should be expressed in body frame, not world frame
-                        [0.0, 1.0, z_b.item(0)], # 
+                        [1.0, 0.0, -z.item(1)], # should be expressed in body frame, not world frame
+                        [0.0, 1.0, z.item(0)], # 
                     ])
                     # th_fa = Rot.from_matrix(T_fa[:3,:3]).as_euler('xyz', degrees=False)[2]
                     # Jac_T = np.array([
@@ -260,17 +261,17 @@ class MultiObjectTracker():
                     #     [0.0, 0.0, 0.0],
                     #     [0.0, 0.0, 0.0]
                     # ])
-                    Jac_R = self.realigner.transforms[cam][:2,:2]
+                    Jac_R = self.realigner.transforms[cam][:2,:2].T
                     Sigma_fa = np.zeros((3,3))
                     Sigma_fa[0, 0] = T_fa[0, 3]*(self.realigner.realigns_since_change[cam]+1) # for now, just the mag of x and y change
                     Sigma_fa[1, 1] = T_fa[1, 3]*(self.realigner.realigns_since_change[cam]+1) # for now, just the mag of x and y change
                     Sigma_fa[2, 2] = Rot.from_matrix(T_fa[:3,:3]).as_euler('xyz', degrees=False)[2] * (self.realigner.realigns_since_change[cam]+1) *.1 #* 8.1712
-                    R = Jac_T @ (Sigma_fa) @ Jac_T.T + Jac_R @ (track.R) @ Jac_R.T
+                    R = Jac_T @ (Sigma_fa) @ Jac_T.T + Jac_R @ R @ Jac_R.T
                 if cam in self.realigner.transforms:
                     T = inv(self.realigner.transforms[cam])
                 else:
                     T = np.eye(4)
-                obs = track.get_measurement_info(track.R, T=T) # TODO: figure out R
+                obs = track.get_measurement_info(R, T=T) # TODO: figure out R
                 obs.add_destination(cam)
                 observations.append(obs)
         return observations
