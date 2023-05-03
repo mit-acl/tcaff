@@ -31,3 +31,16 @@ def T_mag(T, deg2m):
     rot_mag = R.as_euler('xyz', degrees=True)[2] / deg2m
     t_mag = np.linalg.norm(t)
     return np.abs(rot_mag) + np.abs(t_mag)
+
+def transform_2_xypsi(T):
+    x = T[0,3]
+    y = T[1,3]
+    psi = Rot.from_matrix(T[:3,:3]).as_euler('xyz', degrees=False)[2]
+    return x, y, psi
+
+def xypsi_2_transform(x, y, psi):
+    T = np.eye(4)
+    T[:2,:2] = Rot.from_euler('xyz', [0, 0, psi]).as_matrix()[:2,:2]
+    T[0,3] = x
+    T[1,3] = y
+    return T

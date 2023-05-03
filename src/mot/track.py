@@ -54,6 +54,10 @@ class Track():
     @property
     def ell(self):
         return self._ell
+    
+    @property
+    def xbar(self):
+        return self._xbar[self._id[0]]
 
     def update(self, measurements):
         self.frames_seen += 1
@@ -66,8 +70,8 @@ class Track():
         Sets xbar, z, R, and H
         '''
         xhat = self._state
-        self.xbar = dict(); self.zs = dict(); self.us = dict(); self.Us = dict()
-        self.xbar[self._id[0]] = self.A @ xhat
+        self._xbar = dict(); self.zs = dict(); self.us = dict(); self.Us = dict()
+        self._xbar[self._id[0]] = self.A @ xhat
         if self._seen:
             self.zs[self._id[0]] = list()
             u = np.zeros((self.shape_x, 1))
@@ -85,7 +89,7 @@ class Track():
             self.mapped_ids.add(mid) 
         if not meas_info.has_measurement_info:
             return
-        self.xbar[meas_info.track_id[0]] = meas_info.xbar
+        self._xbar[meas_info.track_id[0]] = meas_info.xbar
         self._ell = min(self._ell, meas_info.ell)
         self.zs[meas_info.track_id[0]] = meas_info.zs
         self.us[meas_info.track_id[0]] = meas_info.u
@@ -98,7 +102,7 @@ class Track():
         # TODO: magic numbers here (would be nice to have x and z dim not matter)
             
         # Extract xbar and correct
-        xbar=np.copy(self.xbar[self._id[0]])
+        xbar=np.copy(self._xbar[self._id[0]])
         pos = np.concatenate([xbar[0:2,:], [[0], [1]]], axis=0)
         vel = np.concatenate([xbar[2:4,:], [[0]]], axis=0)
         pos_corrected = T @ pos
@@ -139,9 +143,9 @@ class Track():
 
         M = inv(inv(self.P) + Y)
         gamma = 1/np.linalg.norm(M+1)
-        xbar = self.xbar[self._id[0]]
+        xbar = self._xbar[self._id[0]]
         xbar_diffs = np.zeros((self.shape_x, 1))
-        for track_id, xbar_j in self.xbar.items():
+        for track_id, xbar_j in self._xbar.items():
             if track_id == self._id[0]: continue
             xbar_diffs += xbar_j - xbar 
 
@@ -178,7 +182,7 @@ class Track():
         
     def died(self):
         self.dead_cnt = 0
-        self.xbar = dict(); self.zs = dict(); self.Rs = dict(); self.Hs = dict()
+        self._xbar = dict(); self.zs = dict(); self.Rs = dict(); self.Hs = dict()
         
     def get_recent_detection_array(self):
         ids = []

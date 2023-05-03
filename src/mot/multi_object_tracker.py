@@ -7,12 +7,13 @@ from copy import deepcopy
 
 from .track import Track
 from config.track_params import TrackParams
-from realign.frame_realigner import FrameRealigner
+from realign.frame_realigner import FrameRealigner, RECURSIVE_LEAST_SQUARES, KF
 from utils.transform import transform
 
 NUM_CAMS = 4
 COV_MAG = .01
 USE_NLML = True
+MERGE_RANGE_M = .15
 class MultiObjectTracker():
 
     def __init__(self, camera_id, connected_cams, params):
@@ -49,9 +50,30 @@ class MultiObjectTracker():
             self.recent_detection_list.append(None)
             
         self.pose = None
+        self.MDs = []
         
 
     def local_data_association(self, Zs, feature_vecs):
+        self.MDs = []
+        for track in self.tracks + self.new_tracks:
+            track.predict()
+        
+        # merge any multiple detections within some range
+        need_to_merge = True
+        while need_to_merge:
+            need_to_merge = False
+            for i in range(len(Zs)):
+                for j in range(len(Zs)):
+                    if i == j: continue
+                    if norm(Zs[i][:2,:] - Zs[j][:2,:]) < MERGE_RANGE_M:
+                        need_to_merge = True
+                        break
+                if need_to_merge:
+                    break
+            if need_to_merge:
+                Zs[i] = (Zs[i] + Zs[j]) / 2
+                del Zs[j]
+        
         frame_detections = []
         for z in Zs:
             frame_detections.append(z[0:2,:].reshape(-1,1))
@@ -59,11 +81,12 @@ class MultiObjectTracker():
         geometry_scores = np.zeros((len(all_tracks), len(Zs)))
         large_num = 1000
         for i, track in enumerate(all_tracks):
-            Hx_xy = (track.H @ track.state)[0:2,:]
+            Hx_xy = (track.H @ track.xbar)[0:2,:]
             for j, (Z, aj) in enumerate(zip(Zs, feature_vecs)):
                 z_xy = Z[0:2,:]
                 # Mahalanobis distance
                 d = np.sqrt((z_xy - Hx_xy).T @ np.linalg.inv(track.V) @ (z_xy - Hx_xy)).item(0)
+                self.MDs.append(d)
                 
                 # Geometry similarity value
                 if not d < self.Tau_LDA:
@@ -266,7 +289,10 @@ class MultiObjectTracker():
                     Sigma_fa[0, 0] = T_fa[0, 3]*(self.realigner.realigns_since_change[cam]+1) # for now, just the mag of x and y change
                     Sigma_fa[1, 1] = T_fa[1, 3]*(self.realigner.realigns_since_change[cam]+1) # for now, just the mag of x and y change
                     Sigma_fa[2, 2] = Rot.from_matrix(T_fa[:3,:3]).as_euler('xyz', degrees=False)[2] * (self.realigner.realigns_since_change[cam]+1) *.1 #* 8.1712
+                    if RECURSIVE_LEAST_SQUARES or KF:
+                        Sigma_fa = self.realigner.transform_covs[cam][:3, :3]
                     R = Jac_T @ (Sigma_fa) @ Jac_T.T + Jac_R @ R @ Jac_R.T
+                    R = (R.T + R) / 2 # keep PD
                 if cam in self.realigner.transforms:
                     T = inv(self.realigner.transforms[cam])
                 else:

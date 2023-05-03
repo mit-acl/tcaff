@@ -14,8 +14,9 @@ from utils.transform import transform, T_mag
 from utils.debug_help import *
 from utils.cam_utils import pt_is_seeable
 
-T_MAG_STATIC_OBJ_REALIGN_THRESH = 1.5
+T_MAG_STATIC_OBJ_REALIGN_THRESH = 5
 SKIP_RR01_IN_VIEW = False
+PROP_T_FOR_REALIGN_INIT_GUESS = False
 
 class RoverMotFrontend():
     
@@ -80,13 +81,12 @@ class RoverMotFrontend():
                 for j, mot2 in enumerate(self.mots[self.num_rovers:]):
                     if mot1 == mot2: continue
                     T_current = mot1.realigner.transforms[mot2.camera_id]
-                    T_new = realign_cones(mot1.cones, mot2.cones, T_current)
-                    # print(T_new)
-                    # print(mot1.realigner.T_mag(T_new @ np.linalg.inv(T_current)))
+                    if PROP_T_FOR_REALIGN_INIT_GUESS:
+                        T_guess = mot1.realigner.get_transform_p1(mot2.camera_id)
+                        T_new = realign_cones(mot1.cones, mot2.cones, T_guess)
+                    else:
+                        T_new = realign_cones(mot1.cones, mot2.cones, T_current)
                     if mot1.realigner.T_mag(T_new @ np.linalg.inv(T_current)) < T_MAG_STATIC_OBJ_REALIGN_THRESH: #and self.get_filtered_T_mag(T_new @ np.linalg.inv(T_current), 'psi') < 8:
-                    # if True:
-                        # print(T_new)
-                        # print(self.detector.get_T_obj2_obj1(i, 'l515', j, 'l515', self.frame_time))
                         mot1.realigner.update_transform(mot2.camera_id, T_new)
                         mot1.realigner.update_transform(j, T_new)
                         self.mots[i].realigner.update_transform(mot2.camera_id, T_new)
