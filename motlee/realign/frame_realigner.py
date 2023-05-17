@@ -2,10 +2,10 @@ import numpy as np
 from numpy.linalg import inv
 from scipy.spatial.transform import Rotation as Rot
 
-from config.track_params import TrackParams
-from mot.measurement_info import MeasurementInfo
-from utils.transform import transform, T_mag, transform_2_xypsi, xypsi_2_transform
-from realign.wls import wls
+from motlee.config.track_params import TrackParams
+from motlee.mot.measurement_info import MeasurementInfo
+from motlee.utils.transform import transform, T_mag, transform_2_xypsi, xypsi_2_transform
+from motlee.realign.wls import wls
 
 
 RECURSIVE_LEAST_SQUARES = False

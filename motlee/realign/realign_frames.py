@@ -7,8 +7,8 @@ if o3d.__DEVICE_API__ == 'cuda':
 else:
     import open3d.cpu.pybind.t.pipelines.registration as treg
 
-from realign.wls import wls
-from utils.transform import transform
+from motlee.realign.wls import wls
+from motlee.utils.transform import transform
 
 import clipperpy
 

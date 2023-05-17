@@ -1,6 +1,6 @@
 import numpy as np
 
-from utils.transform import transform
+from motlee.utils.transform import transform
 
 def wls(pts1, pts2, weights):
     mean1 = (np.sum(pts1 * weights, axis=0) / np.sum(weights)).reshape(-1)

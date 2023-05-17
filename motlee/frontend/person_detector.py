@@ -1,9 +1,10 @@
 # import torchreid feature extractor
 from torchreid.utils import FeatureExtractor
-if __name__ == '__main__':
-    from detections import get_rover_detections, get_cone_detections
-else:
-    from .detections import get_rover_detections, get_cone_detections
+# if __name__ == '__main__':
+#     from detections import get_rover_detections, get_cone_detections
+# else:
+#     from .detections import get_rover_detections, get_cone_detections
+from motlee.frontend.detections import get_rover_detections, get_cone_detections
 import numpy as np
 from numpy.linalg import inv
 

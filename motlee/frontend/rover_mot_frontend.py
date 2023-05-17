@@ -4,15 +4,15 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 from scipy.spatial.transform import Rotation as Rot
 
-from frontend.person_detector import PersonDetector
-from frontend.detections import GroundTruth
-from mot.multi_object_tracker import MultiObjectTracker
-from metrics.metric_evaluator import MetricEvaluator
-from metrics.inconsistency_counter import InconsistencyCounter
-from realign.realign_frames import realign_cones, recently_weighted_realign
-from utils.transform import transform, T_mag
-from utils.debug_help import *
-from utils.cam_utils import pt_is_seeable
+from motlee.frontend.person_detector import PersonDetector
+from motlee.frontend.detections import GroundTruth
+from motlee.mot.multi_object_tracker import MultiObjectTracker
+from motlee.metrics.metric_evaluator import MetricEvaluator
+from motlee.metrics.inconsistency_counter import InconsistencyCounter
+from motlee.realign.realign_frames import realign_cones, recently_weighted_realign
+from motlee.utils.transform import transform, T_mag
+from motlee.utils.debug_help import *
+from motlee.utils.cam_utils import pt_is_seeable
 
 T_MAG_STATIC_OBJ_REALIGN_THRESH = 5
 SKIP_RR01_IN_VIEW = False

@@ -2,7 +2,7 @@ import numpy as np
 from numpy.linalg import inv
 from copy import deepcopy
 
-from .measurement_info import MeasurementInfo
+from motlee.mot.measurement_info import MeasurementInfo
 
 class Track():
 

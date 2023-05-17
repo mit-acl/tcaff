@@ -8,15 +8,16 @@ import gtsam
 import glob
 import yaml
 
-if __name__ == '__main__':
-    from camera_calibration_mocap.cam_calib_mocap import get_calibrator
-    import sys
-    sys.path.append('..')
-else:
-    from .camera_calibration_mocap.cam_calib_mocap import get_calibrator
-import config.data_params as PARAMS
-from utils.transform import transform
-from utils.cam_utils import pixel2groundplane
+# if __name__ == '__main__':
+#     from camera_calibration_mocap.cam_calib_mocap import get_calibrator
+#     import sys
+#     sys.path.append('..')
+# else:
+#     from .camera_calibration_mocap.cam_calib_mocap import get_calibrator
+from camera_calibration_mocap import get_calibrator
+import motlee.config.data_params as PARAMS
+from motlee.utils.transform import transform
+from motlee.utils.cam_utils import pixel2groundplane
 
 def bag2poses(bagfile, topic):
     pose_csv = bagfile.message_by_topic(topic)

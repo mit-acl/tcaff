@@ -5,10 +5,10 @@ from scipy.spatial.transform import Rotation as Rot
 from scipy.linalg import logm
 from copy import deepcopy
 
-from .track import Track
-from config.track_params import TrackParams
-from realign.frame_realigner import FrameRealigner, RECURSIVE_LEAST_SQUARES, KF
-from utils.transform import transform
+from motlee.mot.track import Track
+from motlee.config.track_params import TrackParams
+from motlee.realign.frame_realigner import FrameRealigner, RECURSIVE_LEAST_SQUARES, KF
+from motlee.utils.transform import transform
 
 NUM_CAMS = 4
 COV_MAG = .01
