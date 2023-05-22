@@ -141,7 +141,9 @@ class Track():
             y += u
             Y += U
 
+        Y = (Y.T + Y) / 2.0
         M = inv(inv(self.P) + Y)
+
         gamma = 1/np.linalg.norm(M+1)
         xbar = self._xbar[self._id[0]]
         xbar_diffs = np.zeros((self.shape_x, 1))
@@ -154,6 +156,7 @@ class Track():
 
         self._state = xhat
         self.P = self.A @ M @ self.A.T + self.Q
+        self.P = (self.P + self.P.T) / 2
         self.V = self.P[0:2,0:2] + self.R[0:2,0:2]
 
     def cycle(self):
