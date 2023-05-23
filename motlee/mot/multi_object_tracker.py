@@ -53,7 +53,7 @@ class MultiObjectTracker():
         self.MDs = []
         
 
-    def local_data_association(self, Zs, feature_vecs):
+    def local_data_association(self, Zs, feature_vecs, Rs):
         self.MDs = []
         for track in self.tracks + self.new_tracks:
             track.predict()
@@ -82,17 +82,18 @@ class MultiObjectTracker():
         large_num = 1000
         for i, track in enumerate(all_tracks):
             Hx_xy = (track.H @ track.xbar)[0:2,:]
-            for j, (Z, aj) in enumerate(zip(Zs, feature_vecs)):
+            for j, (Z, aj, R) in enumerate(zip(Zs, feature_vecs, Rs)):
                 z_xy = Z[0:2,:]
+                V = track.P[:2,:2] + R
                 # Mahalanobis distance
-                d = np.sqrt((z_xy - Hx_xy).T @ np.linalg.inv(track.V) @ (z_xy - Hx_xy)).item(0)
+                d = np.sqrt((z_xy - Hx_xy).T @ np.linalg.inv(V) @ (z_xy - Hx_xy)).item(0)
                 self.MDs.append(d)
                 
                 # Geometry similarity value
                 if not d < self.Tau_LDA:
                     s_d = large_num
                 elif USE_NLML:
-                    s_d = 1/self.alpha*(2*np.log(2*np.pi) + d**2 + np.log(np.linalg.det(track.V)))
+                    s_d = 1/self.alpha*(2*np.log(2*np.pi) + d**2 + np.log(np.linalg.det(V)))
                 else:
                     s_d = 1/self.alpha*d
                 if np.isnan(s_d):
@@ -109,7 +110,7 @@ class MultiObjectTracker():
             # track and measurement associated together
             if t_idx < len(all_tracks) and z_idx < len(Zs):
                 assert geometry_scores[t_idx,z_idx] < 1
-                all_tracks[t_idx].update([Zs[z_idx]])       
+                all_tracks[t_idx].update([Zs[z_idx]], Rs[z_idx])       
             # unassociated measurement
             elif z_idx < len(Zs):
                 unassociated.append(z_idx)
@@ -132,14 +133,14 @@ class MultiObjectTracker():
 
         for z_idx in unassociated:
             new_track = Track(self.camera_id, self.next_available_id, TrackParams(), [Zs[z_idx]], np.vstack([Zs[z_idx], np.zeros((2,1))]))
-            new_track.update([Zs[z_idx]])
+            new_track.update([Zs[z_idx]], Rs[z_idx])
             self.new_tracks.append(new_track)
             self.next_available_id += 1
 
         for track in self.tracks + self.new_tracks:
             track.predict()
             
-    def cone_update(self, Zs):
+    def cone_update(self, Zs, Rs):
         for i in range(len(Zs)):
             Zs[i] = Zs[i][:2,:].reshape(-1).reshape((2, 1))
         all_cones = self.cones + self.new_cones
@@ -147,16 +148,17 @@ class MultiObjectTracker():
         large_num = 1000
         for i, track in enumerate(all_cones):
             Hx_xy = (track.H @ track.state)[0:2,:]
-            for j, Z in enumerate(Zs):
+            for j, (Z, R) in enumerate(zip(Zs, Rs)):
                 z_xy = Z[0:2,:]
+                V = track.P + R
                 # Mahalanobis distance
-                d = np.sqrt((z_xy - Hx_xy).T @ np.linalg.inv(track.V) @ (z_xy - Hx_xy)).item(0)
+                d = np.sqrt((z_xy - Hx_xy).T @ np.linalg.inv(V) @ (z_xy - Hx_xy)).item(0)
                 
                 # Geometry similarity value
                 if not d < self.Tau_cone:
                     s_d = large_num
                 elif USE_NLML:
-                    s_d = 1/self.alpha*(2*np.log(2*np.pi) + d**2 + np.log(np.linalg.det(track.V)))
+                    s_d = 1/self.alpha*(2*np.log(2*np.pi) + d**2 + np.log(np.linalg.det(V)))
                 else:
                     s_d = 1/self.alpha*d
                 if np.isnan(s_d):
@@ -174,7 +176,7 @@ class MultiObjectTracker():
             # track and measurement associated together
             if t_idx < len(all_cones) and z_idx < len(Zs):
                 assert product_scores[t_idx,z_idx] < 1
-                all_cones[t_idx].update([Zs[z_idx]])        
+                all_cones[t_idx].update([Zs[z_idx]], Rs[z_idx])        
             # unassociated measurement
             elif z_idx < len(Zs):
                 unassociated.append(z_idx)
@@ -198,7 +200,7 @@ class MultiObjectTracker():
             new_cone = Track(self.camera_id, self.next_available_id, TrackParams(), [Zs[z_idx]], np.vstack([Zs[z_idx], np.zeros((2,1))]))
             new_cone.A = np.eye(4); new_cone.A[2:,2:] = np.zeros((2,2))
             new_cone.Q = np.eye(4)
-            new_cone.update([np.copy(Zs[z_idx])])
+            new_cone.update([np.copy(Zs[z_idx])], Rs[z_idx])
             new_cone.seen_by_this_camera = True
             self.new_cones.append(new_cone)
             self.next_available_id += 1
