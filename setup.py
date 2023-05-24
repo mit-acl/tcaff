@@ -14,7 +14,12 @@ setup(
                         'scipy',
                         'pandas',
                         'gtsam',
-                        'pyyaml'
+                        'pyyaml',
+                        'opencv-python',
+                        'tqdm',
+                        'motmetrics',
+                        'bagpy',
+                        'open3d'
                       ],
 
     # classifiers=[

@@ -1,24 +1,24 @@
 # import torchreid feature extractor
-from torchreid.utils import FeatureExtractor
+# from torchreid.utils import FeatureExtractor
 # if __name__ == '__main__':
 #     from detections import get_rover_detections, get_cone_detections
 # else:
 #     from .detections import get_rover_detections, get_cone_detections
 from motlee.frontend.detections import get_rover_detections, get_cone_detections
 import numpy as np
-from numpy.linalg import inv
+from numpy.linalg import inv, norm
 
 class PersonDetector():
 
     def __init__(self, bagfiles, device='cuda', sigma_r=0, sigma_t=0, 
                  cams=['RR01', 'RR04', 'RR05', 'RR06', 'RR08'], cam_types=['t265'], 
                  cam_pose_topic='/world', register_time=16, vicon_cones=False):
-        self.extractor = FeatureExtractor(
-            model_name='osnet_x1_0', # TODO: Is this a good enough re-id network?
-            # model_path='a/b/c/model.pth.tar',
-            device=device,
-            verbose=False
-        )
+        # self.extractor = FeatureExtractor(
+        #     model_name='osnet_x1_0', # TODO: Is this a good enough re-id network?
+        #     # model_path='a/b/c/model.pth.tar',
+        #     device=device,
+        #     verbose=False
+        # )
         # self.detections = dict()
         # for c_type in cam_types:
         #     self.detections[c_type] = get_rover_detections(bagfile=bagfile, sigma_r=sigma_r, sigma_t=sigma_t, 
@@ -46,11 +46,17 @@ class PersonDetector():
         positions = []
         boxes = []
         features = []
+        Rs = []
         for b, p in zip(self.detections[cam_num][cam_type].bbox(frame_time), self.detections[cam_num][cam_type].pos(frame_time)):
+            T_WC = self.detections[cam_num][cam_type].T_WC(frame_time, T_BC=self.detections[cam_num][cam_type].T_BC, true_pose=False)
+            dist = norm(p.reshape(-1)[:2] - T_WC[:2,3])
+            sigma_sq = .5 + (dist > 5) * .1*(dist - 5)
+            R = np.diag([sigma_sq, sigma_sq])
+            Rs.append(R)
             positions.append(p.reshape(-1).tolist())
             boxes.append(b)
             features.append(self._get_box_features(b, im, cam_type))
-        return positions, boxes, features
+        return positions, boxes, features, Rs
     
     def get_cones(self, cam_num, cam_type, framenum, frame_time):
         T_WC = self.detections[cam_num][cam_type].T_WC(frame_time, T_BC=self.cone_detections[cam_num].T_BC, true_pose=True)

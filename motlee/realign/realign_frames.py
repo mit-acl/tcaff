@@ -10,7 +10,7 @@ else:
 from motlee.realign.wls import wls
 from motlee.utils.transform import transform
 
-import clipperpy
+# import clipperpy
 
 # STARTING A LIST OF MAGIC NUMBERS HERE
 NUM_CONES_REQ = 10

@@ -132,7 +132,7 @@ class RoverMotFrontend():
             # if framenum % 30 == 0:
             #     new_d = get_cone_debug_dict(self.frame_time, cones, self.detector.get_ordered_detections(['l515'])[0])
             #     self.debug.append(new_d)
-            mot.cone_update(cones)    
+            mot.cone_update(cones, [np.diag([.5, .5]) for cone in cones])    
         if framenum % 1 == 0:
             # new_d = get_realign_debug_dict(self.frame_time, self.mots[2], self.mots[3], 
             #                                self.detector.get_ordered_detections(['l515'])[0], 
@@ -177,7 +177,7 @@ class RoverMotFrontend():
 
             for j, (mot, frame) in enumerate(zip([mot1, mot2], [frame1, frame2])):
                 mot.pose = self.detector.detections[i]['t265'].T_WC(self.frame_time, T_BC=np.eye(4), true_pose=False)
-                positions, boxes, feature_vecs = self.detector.get_person_boxes(frame, i, self.cam_types[j], self.frame_time)
+                positions, boxes, feature_vecs, Rs = self.detector.get_person_boxes(frame, i, self.cam_types[j], self.frame_time)
                 Zs = []
                 for pos, box in zip(positions, boxes):
                     x0, y0, x1, y1 = box
@@ -185,7 +185,7 @@ class RoverMotFrontend():
                     if self.viewer:
                         cv.rectangle(frame, (int(x0),int(y0)), (int(x1),int(y1)), (0,255,0), 4)
 
-                mot.local_data_association(Zs, feature_vecs)
+                mot.local_data_association(Zs, feature_vecs, Rs)
                 observations += mot.get_observations()  
 
                 if self.viewer:

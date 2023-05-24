@@ -39,7 +39,7 @@ if __name__ == '__main__':
             help='Disables progress bar and metric output')
     parser.add_argument('--metric-frequency',
             type=float,
-            default=0,
+            default=2,
             help='Frequency (hz) to show metric summary')
     parser.add_argument('--num-rovers',
             type=int,
@@ -162,22 +162,22 @@ if __name__ == '__main__':
             print(f't_diff: {v}')
             v = sim.get_all_T_diffs(filter='t')
             print(f't_diff_list: {v}')
-            det_v = []
-            det_p = []
-            det_q = []
-            det_r = []
-            MDs = []
-            for mot in sim.mots:
-                det_v += [np.linalg.det(track.V) for track in mot.tracks]
-                det_p += [np.linalg.det(track.P) for track in mot.tracks]
-                det_q += [np.linalg.det(track.Q) for track in mot.tracks]
-                det_r += [np.linalg.det(track.R) for track in mot.tracks]
-                MDs += mot.MDs
-            print(f'det(V): {det_v}')
-            print(f'det(P): {det_p}')
-            print(f'det(Q): {det_q}')
-            print(f'det(R): {det_r}')
-            print(f'MDs: {MDs}')
+            # det_v = []
+            # det_p = []
+            # det_q = []
+            # det_r = []
+            # MDs = []
+            # for mot in sim.mots:
+            #     det_v += [np.linalg.det(track.V) for track in mot.tracks]
+            #     det_p += [np.linalg.det(track.P) for track in mot.tracks]
+            #     det_q += [np.linalg.det(track.Q) for track in mot.tracks]
+            #     det_r += [np.linalg.det(track.R) for track in mot.tracks]
+            #     MDs += mot.MDs
+            # print(f'det(V): {det_v}')
+            # print(f'det(P): {det_p}')
+            # print(f'det(Q): {det_q}')
+            # print(f'det(R): {det_r}')
+            # print(f'MDs: {MDs}')
             print()
             if inst_metrics:
                 if len(sim.mes) >= 20:

@@ -48,7 +48,7 @@ def read_scores(metric_file, args):
             metric_is_list = [args.metric_is_list, False, False, False]
             for metric, idx, is_list in zip(metric_list, metric_idx, metric_is_list):
                 if f'{metric}:' in line:
-                    assert new_score[idx] is None, f'{metric}'
+                    assert new_score[idx] is None, f'{metric}\n{line}'
                     new_score[idx] = get_float_val(line, f'{metric}:', is_list=is_list)
                     if None not in new_score: 
                         scores.append(new_score)

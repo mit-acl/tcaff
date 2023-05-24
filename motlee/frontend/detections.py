@@ -14,7 +14,7 @@ import yaml
 #     sys.path.append('..')
 # else:
 #     from .camera_calibration_mocap.cam_calib_mocap import get_calibrator
-from camera_calibration_mocap import get_calibrator
+# from motlee.frontend.camera_calibration_mocap import get_calibrator
 import motlee.config.data_params as PARAMS
 from motlee.utils.transform import transform
 from motlee.utils.cam_utils import pixel2groundplane

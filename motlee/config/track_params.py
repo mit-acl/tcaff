@@ -4,8 +4,7 @@ class TrackParams():
     '''
     Default track parameters
     '''
-    
-    def __init__(self, ts=.04):
+    def __init__(self, ts=.1):
     # def __init__(self, ts=.1):
         self.ts = ts
         self.A = np.array([
@@ -15,7 +14,7 @@ class TrackParams():
             [0, 0, 0, 1]
         ], dtype=np.float64)
         self.H = np.eye(2, 4)
-        self.Q = 1e2*np.array([
+        self.Q = 50*np.array([
             [(ts**4)/4, 0, (ts**3)/2, 0],
             [0, (ts**4)/4, 0, (ts**3)/2],
             [(ts**3)/2, 0, ts**2, 0],

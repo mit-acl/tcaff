@@ -150,7 +150,7 @@ class MultiObjectTracker():
             Hx_xy = (track.H @ track.state)[0:2,:]
             for j, (Z, R) in enumerate(zip(Zs, Rs)):
                 z_xy = Z[0:2,:]
-                V = track.P + R
+                V = track.P[:2, :2] + R
                 # Mahalanobis distance
                 d = np.sqrt((z_xy - Hx_xy).T @ np.linalg.inv(V) @ (z_xy - Hx_xy)).item(0)
                 
