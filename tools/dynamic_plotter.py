@@ -27,9 +27,9 @@ def get_float_val(line, identifier, is_list=False):
         if not is_list:
             return float(line.split(identifier)[1].strip().split()[0])
         else:
-            json.loads(line.split(identifier)[1].strip())
-            # import ipdb; ipdb.set_trace()
-            return json.loads(line.split(identifier)[1].strip())
+            list_str = line.split(identifier)[1].strip()
+            list_floats = [float(sub_str.strip()) for sub_str in list_str.split('[')[1].split(']')[0].strip().split(',')]
+            return list_floats
     except:
         print('offending line:')
         print(line)
@@ -48,7 +48,7 @@ def read_scores(metric_file, args):
             metric_is_list = [args.metric_is_list, False, False, False]
             for metric, idx, is_list in zip(metric_list, metric_idx, metric_is_list):
                 if f'{metric}:' in line:
-                    assert new_score[idx] is None, f'{metric}\n{line}'
+                    assert new_score[idx] is None, f'{metric}'
                     new_score[idx] = get_float_val(line, f'{metric}:', is_list=is_list)
                     if None not in new_score: 
                         scores.append(new_score)
@@ -93,6 +93,7 @@ parser.add_argument('--metric-plot-avg', action='store_true')
 parser.add_argument('--output', '-o', default=None, type=str)
 parser.add_argument('--legend', '-l', type=str, default=None,
                     help='legend formatted as python list')
+parser.add_argument('--dpi', type=int, default=240)
 args = parser.parse_args()
 
 if not args.metric_file:
@@ -155,7 +156,8 @@ if not args.metric_only:
     ax[1].grid(True)
     ax[2].set_ylabel('Translation error (m)')
     ax[2].set_xlabel('Time (s)')
-    ax[1].legend(['Perfect localization', 'Casao', 'MOTLEE (realignment)', 'MOTLEE (realignment +\n uncertainty incorporation)'], loc=(0.01,0.3))
+    # ax[1].legend(['Perfect localization', 'Casao', 'MOTLEE (realignment)', 'MOTLEE (realignment +\n uncertainty incorporation)'], loc=(0.01,0.3))
+    ax[1].legend(legend, loc=(0.01,0.3))
 
     ax[1].set_ylim([-.9, 17])
     ax[2].set_ylim([-.15, 3.1])
@@ -189,7 +191,7 @@ else:
 
 
 
-# f.set_dpi(240)
+f.set_dpi(args.dpi)
 
 if args.output is not None:
     f.set_dpi(1000)
