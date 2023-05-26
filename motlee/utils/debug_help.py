@@ -91,7 +91,7 @@ def dump_everything_in_the_whole_world(frametime, framenum, rovers, mots, detect
         r_dict = dict()
         r_dict['T_WC'] = det.T_WC(frametime, T_BC=det.T_BC, true_pose=True).reshape(-1).tolist()
         r_dict['T_WC_bel'] = det.T_WC(frametime, T_BC=det.T_BC, true_pose=False).reshape(-1).tolist()
-        r_dict['tracks'] = m.get_trackers(format='list')
+        r_dict['tracks'] = m.get_tracks(format='list')
         r_dict['T_fix'] = dict()
         for r_id, T in m.realigner.transforms.items():
             r_dict['T_fix'][r_id] = T.reshape(-1).tolist()

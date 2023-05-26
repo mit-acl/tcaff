@@ -4,18 +4,19 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 from scipy.spatial.transform import Rotation as Rot
 
-from frontend.person_detector import PersonDetector
-from frontend.detections import GroundTruth
-from mot.multi_object_tracker import MultiObjectTracker
-from metrics.metric_evaluator import MetricEvaluator
-from metrics.inconsistency_counter import InconsistencyCounter
-from realign.realign_frames import realign_cones, recently_weighted_realign
-from utils.transform import transform, T_mag
-from utils.debug_help import *
-from utils.cam_utils import pt_is_seeable
+from motlee.frontend.person_detector import PersonDetector
+from motlee.frontend.detections import GroundTruth
+from motlee.mot.multi_object_tracker import MultiObjectTracker
+from motlee.metrics.metric_evaluator import MetricEvaluator
+from motlee.metrics.inconsistency_counter import InconsistencyCounter
+from motlee.realign.realign_frames import realign_cones, recently_weighted_realign
+from motlee.utils.transform import transform, T_mag
+from motlee.utils.debug_help import *
+from motlee.utils.cam_utils import pt_is_seeable
 
-T_MAG_STATIC_OBJ_REALIGN_THRESH = 1.5
+T_MAG_STATIC_OBJ_REALIGN_THRESH = 5
 SKIP_RR01_IN_VIEW = False
+PROP_T_FOR_REALIGN_INIT_GUESS = False
 
 class RoverMotFrontend():
     
@@ -80,17 +81,16 @@ class RoverMotFrontend():
                 for j, mot2 in enumerate(self.mots[self.num_rovers:]):
                     if mot1 == mot2: continue
                     T_current = mot1.realigner.transforms[mot2.camera_id]
-                    T_new = realign_cones(mot1.cones, mot2.cones, T_current)
-                    # print(T_new)
-                    # print(mot1.realigner.T_mag(T_new @ np.linalg.inv(T_current)))
+                    if PROP_T_FOR_REALIGN_INIT_GUESS:
+                        T_guess = mot1.realigner.get_transform_p1(mot2.camera_id)
+                        T_new = realign_cones(mot1.cones, mot2.cones, T_guess)
+                    else:
+                        T_new, residual, num_cones = realign_cones(mot1.cones, mot2.cones, T_current)
                     if mot1.realigner.T_mag(T_new @ np.linalg.inv(T_current)) < T_MAG_STATIC_OBJ_REALIGN_THRESH: #and self.get_filtered_T_mag(T_new @ np.linalg.inv(T_current), 'psi') < 8:
-                    # if True:
-                        # print(T_new)
-                        # print(self.detector.get_T_obj2_obj1(i, 'l515', j, 'l515', self.frame_time))
-                        mot1.realigner.update_transform(mot2.camera_id, T_new)
-                        mot1.realigner.update_transform(j, T_new)
-                        self.mots[i].realigner.update_transform(mot2.camera_id, T_new)
-                        self.mots[i].realigner.update_transform(j, T_new)
+                        mot1.realigner.update_transform(mot2.camera_id, T_new, residual, num_cones)
+                        mot1.realigner.update_transform(j, T_new, residual, num_cones)
+                        self.mots[i].realigner.update_transform(mot2.camera_id, T_new, residual, num_cones)
+                        self.mots[i].realigner.update_transform(j, T_new, residual, num_cones)
             # for mot in self.mots:
             #     mot.cones = []
             #     mot.new_cones = []
@@ -132,7 +132,7 @@ class RoverMotFrontend():
             # if framenum % 30 == 0:
             #     new_d = get_cone_debug_dict(self.frame_time, cones, self.detector.get_ordered_detections(['l515'])[0])
             #     self.debug.append(new_d)
-            mot.cone_update(cones)    
+            mot.cone_update(cones, [np.diag([.5, .5]) for cone in cones])    
         if framenum % 1 == 0:
             # new_d = get_realign_debug_dict(self.frame_time, self.mots[2], self.mots[3], 
             #                                self.detector.get_ordered_detections(['l515'])[0], 
@@ -177,15 +177,15 @@ class RoverMotFrontend():
 
             for j, (mot, frame) in enumerate(zip([mot1, mot2], [frame1, frame2])):
                 mot.pose = self.detector.detections[i]['t265'].T_WC(self.frame_time, T_BC=np.eye(4), true_pose=False)
-                positions, boxes, feature_vecs = self.detector.get_person_boxes(frame, i, self.cam_types[j], self.frame_time)
+                positions, boxes, feature_vecs, Rs = self.detector.get_person_boxes(frame, i, self.cam_types[j], self.frame_time)
                 Zs = []
                 for pos, box in zip(positions, boxes):
                     x0, y0, x1, y1 = box
-                    Zs.append(np.array([[pos[0], pos[1], 20, 50]]).T)
+                    Zs.append(np.array([[pos[0], pos[1]]]).T)
                     if self.viewer:
                         cv.rectangle(frame, (int(x0),int(y0)), (int(x1),int(y1)), (0,255,0), 4)
 
-                mot.local_data_association(Zs, feature_vecs)
+                mot.local_data_association(Zs, feature_vecs, Rs)
                 observations += mot.get_observations()  
 
                 if self.viewer:
@@ -196,7 +196,7 @@ class RoverMotFrontend():
         for mot in self.mots:
             mot.add_observations([obs for obs in observations if obs.destination == mot.camera_id])
             mot.dkf()
-            mot.tracker_manager()
+            mot.track_manager()
             self.ic.add_groups(mot.camera_id, mot.groups_by_id)
             mot.groups_by_id = []
         self.inconsistencies += self.ic.count_inconsistencies()
@@ -207,7 +207,7 @@ class RoverMotFrontend():
             for i, (mot, det) in enumerate(zip(self.mots, self.detector.get_ordered_detections(self.cam_types))):
             # for i, (mot, det) in enumerate(zip(self.mots[self.num_rovers:], self.detector.get_ordered_detections(self.cam_types)[self.num_rovers:])):
 
-                Xs, colors = mot.get_trackers()   
+                Xs, colors = mot.get_tracks()   
 
                 for X, color in zip(Xs, colors):
                     # correct state for local error
@@ -230,11 +230,11 @@ class RoverMotFrontend():
         if run_metrics:
             for mes in self.mes: 
                 for mot, me, dets in zip(self.mots, mes, self.detector.get_ordered_detections(self.cam_types)):
-                    me.update(gt_dict, mot.get_trackers(format='dict'), 
+                    me.update(gt_dict, mot.get_tracks(format='dict'), 
                             T_true=dets.T_WC(self.frame_time), 
                             T_bel=dets.T_WC(self.frame_time, true_pose=False))
             for mot, me, dets in zip(self.mots, self.full_mes, self.detector.get_ordered_detections(self.cam_types)):
-                me.update(gt_dict, mot.get_trackers(format='dict'), 
+                me.update(gt_dict, mot.get_tracks(format='dict'), 
                         T_true=dets.T_WC(self.frame_time), 
                         T_bel=dets.T_WC(self.frame_time, true_pose=False))
 
@@ -304,6 +304,15 @@ class RoverMotFrontend():
                 T_avg_i += self.get_filtered_T_mag(inv(T) @ T_est, filter=filter) / (self.num_rovers - 1)
             T_avg += T_avg_i / (self.num_rovers)
         return T_avg
+    
+    def get_residual_and_cones(self):
+        residuals, num_cones = [], []
+        for i, mot1 in enumerate(self.mots[self.num_rovers:]):
+            for j, mot2 in enumerate(self.mots[self.num_rovers:]):
+                if mot1 == mot2: continue
+                residuals.append(mot1.realigner.realign_residual[mot2.camera_id])
+                num_cones.append(mot1.realigner.realign_num_cones[mot2.camera_id])
+        return residuals, num_cones        
     
     def get_all_T_diffs(self, filter=None):
         T_diffs = []

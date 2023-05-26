@@ -1,12 +1,12 @@
 from enum import Enum
 
-Tau_LDA = .8
+Tau_LDA = 2.0
 Tau_GDA = .75
 # Tau_LDA = 2.5
 # Tau_GDA = 2.0
 alpha = 2000
 kappa = 4
-n_meas_to_init_tracker = 3
+n_meas_to_init_track = 3
 
 DEG_2_M = 8.1712
 detections_min_num = 100

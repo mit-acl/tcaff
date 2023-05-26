@@ -1,6 +1,6 @@
 import numpy as np
 
-from utils.transform import transform
+from motlee.utils.transform import transform
 
 def is_viewable(pos, T_WC):
     cx = 425.5404052734375

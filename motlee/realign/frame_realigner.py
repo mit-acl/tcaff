@@ -2,25 +2,37 @@ import numpy as np
 from numpy.linalg import inv
 from scipy.spatial.transform import Rotation as Rot
 
-from config import tracker_params as TRACK_PARAM
-from mot.observation_msg import ObservationMsg
-from utils.transform import transform, T_mag
-from realign.wls import wls
+from motlee.config.track_params import TrackParams
+from motlee.mot.measurement_info import MeasurementInfo
+from motlee.utils.transform import transform, T_mag, transform_2_xypsi, xypsi_2_transform
+from motlee.realign.wls import wls
+
+
+RECURSIVE_LEAST_SQUARES = False
+KF = False
 
 class FrameRealigner():
     
     def __init__(self, cam_id, connected_cams, params):
         self.cam_id = cam_id
         self.transforms = dict()
+        self.transform_covs = dict()
+        self.transform_ders = dict()
         self.new_transforms = dict()
         self.realigns_since_change = dict()
         self.last_change_Tmag = dict()
         self.T_last = dict()
+        self.realign_residual = dict()
+        self.realign_num_cones = dict()
         for cam in connected_cams:
             self.transforms[cam] = np.eye(4)
+            self.transform_covs[cam] = np.eye(3) if RECURSIVE_LEAST_SQUARES else np.eye(6)
+            self.transform_ders[cam] = np.zeros((3,1))
             self.T_last[cam] = np.eye(4)
             self.realigns_since_change[cam] = 0
             self.last_change_Tmag[cam] = 0
+            self.realign_residual[cam] = 0
+            self.realign_num_cones[cam] = 0
         self.detections_min_num = params.detections_min_num
         self.tol_growth_rate = params.tolerance_growth_rate
         self.T_mag_unity_tol = params.transform_mag_unity_tolerance
@@ -28,6 +40,43 @@ class FrameRealigner():
         self.tolerance_scale = 1
         self.realign_algorithm = params.realign_algorithm
         self.ALGORITHMS = params.RealignAlgorithm
+        if RECURSIVE_LEAST_SQUARES:
+            self.Q0 = np.array([
+                [1**2, 0.0, 0.0],
+                [0.0, 1**2, 0.0],
+                [0.0, 0.0, (3*np.pi/180)**2]
+            ])
+            self.R = 0.1*np.array([
+                [1**2, 0.0, 0.0],
+                [0.0, 1**2, 0.0],
+                [0.0, 0.0, (3*np.pi/180)**2]
+            ])
+        elif KF:
+            ts = .1
+            self.A = np.array([
+                [1., 0., 0., ts, 0., 0.],
+                [0., 1., 0., 0., ts, 0.],
+                [0., 0., 1., 0., 0., ts],
+                [0., 0., 0., 1., 0., 0.],
+                [0., 0., 0., 0., 1., 0.],
+                [0., 0., 0., 0., 0., 1.]
+            ], dtype=np.float64)
+            self.H = np.eye(3, 6)
+            self.Q0 = 10000*np.array([
+                [(ts**4)/4, 0.,         0.,         (ts**3)/2,  0.,         0.],
+                [0.,        (ts**4)/4,  0.,         0.,         (ts**3)/2,  0.],
+                [0.,        0.,         (5*np.pi/180)**2*(ts**4)/4,  0.,         0.,         (5*np.pi/180)**2*(ts**3)/2],
+                [(ts**3)/2, 0.,         0.,         ts**2,      0.,         0.],
+                [0.,        (ts**3)/2,  0.,         0.,         ts**2,      0.],
+                [0.,        0.,         (5*np.pi/180)**2*(ts**3)/2,  0.,      0.,            (5*np.pi/180)**2*ts**2],
+            ])
+            self.R = 0.01*np.array([
+                [1**2, 0.0, 0.0],
+                [0.0, 1**2, 0.0],
+                [0.0, 0.0, (5*np.pi/180)**2]
+            ])
+            self.Q = np.copy(self.Q0)
+        
     
     def realign(self, trackers):
         local_dets = self._get_camera_detections(self.cam_id, trackers)
@@ -97,14 +146,47 @@ class FrameRealigner():
                 
         self.new_transforms = dict()
         
-    def update_transform(self, cam_id, transform):
+    def update_transform(self, cam_id, transform, alignment_residual=None, alignment_num_cones=None):
         if not np.allclose(self.transforms[cam_id], transform):
             self.realigns_since_change[cam_id] = 0
             self.last_change_Tmag[cam_id] = T_mag(transform @ np.linalg.inv(self.transforms[cam_id]), self.deg2m)
             self.T_last[cam_id] = np.copy(self.transforms[cam_id])
         else:
             self.realigns_since_change[cam_id] += 1
-        self.transforms[cam_id] = transform
+        
+        if RECURSIVE_LEAST_SQUARES:
+            y_meas = np.array((transform_2_xypsi(transform))).reshape((3,1))
+            xhatk = np.array((transform_2_xypsi(self.transforms[cam_id]))).reshape((3,1))
+
+            Qkp1 = inv(inv(self.Q0) + inv(self.R))
+            # Qkp1 = inv(inv(self.transform_covs[cam_id]) + inv(self.Q0))
+            xhatkp1 = xhatk + Qkp1@inv(self.R)@(y_meas - xhatk)
+            self.transform_covs[cam_id] = Qkp1
+            self.transforms[cam_id] = xypsi_2_transform(*xhatkp1.reshape(-1).tolist())
+        if KF:
+            xk = np.vstack([np.array((transform_2_xypsi(self.transforms[cam_id]))).reshape((3,1)), self.transform_ders[cam_id]])
+            xkp = self.A @ xk
+            Qkp = self.A @ self.transform_covs[cam_id] @ self.A.T + self.Q0
+            yk = np.array((transform_2_xypsi(transform))).reshape((3,1))
+            Lk = self.Q @ self.H.T @ inv(self.H @ self.Q @ self.H.T + self.R)
+            xkp1 = xkp + Lk @ (yk - self.H @ xkp)
+            Qkp1 = (np.eye(6) - Lk@self.H) @ Qkp
+            Qkp1 = (Qkp1.T + Qkp1) / 2
+            self.transform_covs[cam_id] = Qkp1
+            self.transforms[cam_id] = xypsi_2_transform(*xkp1.reshape(-1)[:3].tolist())
+            self.transform_ders[cam_id] = xkp1[3:,:]
+        else:
+            self.transforms[cam_id] = transform
+            self.realign_residual[cam_id] = alignment_residual
+            self.realign_num_cones[cam_id] = alignment_num_cones
+
+    def get_transform_p1(self, cam_id):
+        if KF:
+            xk = np.vstack([np.array((transform_2_xypsi(self.transforms[cam_id]))).reshape((3,1)), self.transform_ders[cam_id]])
+            xkp = self.A @ xk
+            return xypsi_2_transform(*xkp.reshape(-1)[:3].tolist())
+        else:
+            return self.transforms[cam_id]
         
     def transform_obs(self, obs):
         obs_cam = obs.tracker_id[0]
@@ -137,7 +219,7 @@ class FrameRealigner():
             if cam_num in tracker.recent_detections:
                 dets.append(tracker.recent_detections[cam_num])
             else:
-                dets.append(np.zeros((TRACK_PARAM.n_recent_dets, 3)) * np.nan)
+                dets.append(np.zeros((TrackParams().n_recent_dets, 3)) * np.nan)
         return dets
     
     def detection_pairs_2_ordered_arrays(self, detection_list1, detection_list2):

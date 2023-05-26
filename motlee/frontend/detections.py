@@ -8,15 +8,16 @@ import gtsam
 import glob
 import yaml
 
-if __name__ == '__main__':
-    from camera_calibration_mocap.cam_calib_mocap import get_calibrator
-    import sys
-    sys.path.append('..')
-else:
-    from .camera_calibration_mocap.cam_calib_mocap import get_calibrator
-import config.data_params as PARAMS
-from utils.transform import transform
-from utils.cam_utils import pixel2groundplane
+# if __name__ == '__main__':
+#     from camera_calibration_mocap.cam_calib_mocap import get_calibrator
+#     import sys
+#     sys.path.append('..')
+# else:
+#     from .camera_calibration_mocap.cam_calib_mocap import get_calibrator
+# from motlee.frontend.camera_calibration_mocap import get_calibrator
+import motlee.config.data_params as PARAMS
+from motlee.utils.transform import transform
+from motlee.utils.cam_utils import pixel2groundplane
 
 def bag2poses(bagfile, topic):
     pose_csv = bagfile.message_by_topic(topic)
@@ -117,9 +118,9 @@ class Detections():
             T_BC = self.T_BC
         idx = self.idx(time)
         if true_pose:
-            return self.data[idx]['T_WB_true'] @ self.T_BC
+            return self.data[idx]['T_WB_true'] @ T_BC
         else:
-            return self.data[idx]['T_WB_bel'] @ self.T_BC
+            return self.data[idx]['T_WB_bel'] @ T_BC
             
     def at(self, time):
         idx = self.idx(time)
@@ -412,7 +413,7 @@ def get_cone_detections(yamlfile='/home/masonbp/ford-project/data/dynamic-final/
             )
         else:
             cone_detections.append(
-                ConeDetections(yamlfile=yamlfile.format(rover), T_BC=T_BCs[rover])
+                ConeDetections(yamlfile=yamlfile.format(rover), T_BC=np.array(T_BCs[rover]).reshape((4,4)))
             )
         
     return cone_detections
