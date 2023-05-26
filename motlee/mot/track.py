@@ -2,7 +2,7 @@ import numpy as np
 from numpy.linalg import inv
 from copy import deepcopy
 
-from .measurement_info import MeasurementInfo
+from motlee.mot.measurement_info import MeasurementInfo
 
 class Track():
 
@@ -12,7 +12,6 @@ class Track():
         self.Q = np.copy(track_params.Q)
         self.R = np.copy(track_params.R)
         self.P = np.copy(track_params.P)
-        self.V = self.P[0:2,0:2] + self.R[0:2,0:2] # Pxy + Rxy
         self.shape_x = self.A.shape[0]
         self.shape_z = self.H.shape[0]
 
@@ -59,11 +58,12 @@ class Track():
     def xbar(self):
         return self._xbar[self._id[0]]
 
-    def update(self, measurements):
+    def update(self, measurements, R):
         self.frames_seen += 1
         self._seen = True
         self._ell = 0
-        self._measurements = measurements
+        self._measurements = deepcopy(measurements)
+        self.R = np.copy(R)
 
     def predict(self):
         '''
@@ -141,7 +141,9 @@ class Track():
             y += u
             Y += U
 
+        Y = (Y.T + Y) / 2.0
         M = inv(inv(self.P) + Y)
+
         gamma = 1/np.linalg.norm(M+1)
         xbar = self._xbar[self._id[0]]
         xbar_diffs = np.zeros((self.shape_x, 1))
@@ -154,7 +156,7 @@ class Track():
 
         self._state = xhat
         self.P = self.A @ M @ self.A.T + self.Q
-        self.V = self.P[0:2,0:2] + self.R[0:2,0:2]
+        self.P = (self.P + self.P.T) / 2
 
     def cycle(self):
         

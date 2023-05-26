@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.spatial.transform import Rotation as Rot
 
-def transform(T, vec):
+def transform_vec(T, vec):
     unshaped_vec = vec.reshape(-1)
     resized_vec = np.concatenate(
         [unshaped_vec, np.zeros((T.shape[0] - 1 - unshaped_vec.shape[0]))]).reshape(-1)
@@ -10,19 +10,19 @@ def transform(T, vec):
     transformed = T @ resized_vec
     return transformed.reshape(-1)[:unshaped_vec.shape[0]].reshape(vec.shape) 
 
-# def transform(T, vecs, stacked_axis=1):
-#     if len(vecs.shape) == 1:
-#         return transform_1d_vec(T, vecs)
-#     vecs_horz_stacked = vecs if stacked_axis==1 else vecs.T
-#     zero_padded_vecs = np.vstack(
-#         [vecs_horz_stacked, np.zeros((T.shape[0] - 1 - vecs_horz_stacked.shape[0], vecs_horz_stacked.shape[1]))]
-#     )
-#     one_padded_vecs = np.vstack(
-#         [zero_padded_vecs, np.ones((1, vecs_horz_stacked.shape[1]))]
-#     )
-#     transformed = T @ one_padded_vecs
-#     transformed = transformed[:vecs_horz_stacked.shape[0],:] 
-#     return transformed if stacked_axis == 1 else transformed.T
+def transform(T, vecs, stacked_axis=1):
+    if len(vecs.reshape(-1)) == 2 or len(vecs.reshape(-1)) == 3:
+        return transform_vec(T, vecs)
+    vecs_horz_stacked = vecs if stacked_axis==1 else vecs.T
+    zero_padded_vecs = np.vstack(
+        [vecs_horz_stacked, np.zeros((T.shape[0] - 1 - vecs_horz_stacked.shape[0], vecs_horz_stacked.shape[1]))]
+    )
+    one_padded_vecs = np.vstack(
+        [zero_padded_vecs, np.ones((1, vecs_horz_stacked.shape[1]))]
+    )
+    transformed = T @ one_padded_vecs
+    transformed = transformed[:vecs_horz_stacked.shape[0],:] 
+    return transformed if stacked_axis == 1 else transformed.T
 
 # gives scalar value to magnitude of translation
 def T_mag(T, deg2m):
@@ -43,4 +43,10 @@ def xypsi_2_transform(x, y, psi):
     T[:2,:2] = Rot.from_euler('xyz', [0, 0, psi]).as_matrix()[:2,:2]
     T[0,3] = x
     T[1,3] = y
+    return T
+
+def pos_quat_to_transform(pos, quat):
+    T = np.eye(4)
+    T[:3,:3] = Rot.from_quat(quat).as_matrix()
+    T[:3,3] = pos.reshape(-1)
     return T

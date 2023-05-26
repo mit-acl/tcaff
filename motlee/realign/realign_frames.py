@@ -7,10 +7,10 @@ if o3d.__DEVICE_API__ == 'cuda':
 else:
     import open3d.cpu.pybind.t.pipelines.registration as treg
 
-from realign.wls import wls
-from utils.transform import transform
+from motlee.realign.wls import wls, wls_residual
+from motlee.utils.transform import transform
 
-import clipperpy
+# import clipperpy
 
 # STARTING A LIST OF MAGIC NUMBERS HERE
 NUM_CONES_REQ = 10
@@ -49,8 +49,11 @@ def realign_frames(detections1, detections2, initial_guess=np.eye(4), max_dist=.
     voxel_size = -1
 
     reg_point_to_point = treg.icp(detections2, detections1, max_correspondence_distance,
-                                init_source_to_target, estimation, criteria,
-                                voxel_size)
+                            init_source_to_target, estimation, criteria,
+                            voxel_size)
+
+    # reg_point_to_point = treg.registration_icp(detections2, detections1, max_correspondence_distance,
+    #                             o3d.cuda.pybind.core.Tensor(init_source_to_target), estimation, criteria)
     return reg_point_to_point
 
 def realign_frames_clipper(detections1, detections2, sigma=0.30, epsilon=0.90):
@@ -129,8 +132,28 @@ def get_cones_and_weights(cones1_input, cones2_input, T_current, ages1=None, age
         cone1_ptcld = o3d.t.geometry.PointCloud(cones1)
         cone2_ptcld = o3d.t.geometry.PointCloud(cones2)
         correspondence_set2 = realign_frames(cone1_ptcld, cone2_ptcld, T_current, max_dist=ICP_MAX_DIST).correspondences_.numpy()
+
+
+        #
+        # open 3d 0.13.0
+        #
+        #
+        # cone1_ptcld = o3d.t.geometry.PointCloud(o3d.cuda.pybind.core.Tensor(cones1.astype(np.float32)))
+        # cone2_ptcld = o3d.t.geometry.PointCloud(o3d.cuda.pybind.core.Tensor(cones2.astype(np.float32)))
+    #     correspondence_set = realign_frames(cone1_ptcld, cone2_ptcld, T_current, max_dist=ICP_MAX_DIST).correspondence_set
+    #     cs2, cs1 = correspondence_set[0].numpy().reshape(-1).tolist(), correspondence_set[1].numpy().reshape(-1).tolist()
     
-    
+    # cones1_new = np.zeros((len(cs1), cones1.shape[1]))
+    # cones2_new = np.zeros((len(cs2), cones2.shape[1]))
+    # ages1_new = np.zeros(len(cs1))
+    # ages2_new = np.zeros(len(cs2))
+    # for i, (c1, c2) in enumerate(zip(cs1, cs2)):
+    #     cones1_new[i,:] = cones1[c1,:]
+    #     cones2_new[i,:] = cones2[c2,:]
+    #     ages1_new[i] = ages1[c1]
+    #     ages2_new[i] = ages2[c2]
+
+        
     cones1_reordered = np.zeros(cones2.shape)
     ages1_reordered = np.zeros((cones2.shape[0], 1))
     for i in range(cones2.shape[0]):
@@ -146,18 +169,22 @@ def get_cones_and_weights(cones1_input, cones2_input, T_current, ages1=None, age
     ages2 = np.delete(ages2, no_correspond_idx, axis=0)
     ages1_reordered = np.delete(ages1_reordered, no_correspond_idx, axis=0)
     
+    # if len(cones2_new) < NUM_CONES_REQ:
     if len(cones2) < NUM_CONES_REQ:
         return None, None, T_current
         
+    # weights = 1/(.01 + ages2_new * ages1_new)
     weights = 1/(.01 + ages2 * ages1_reordered)
     
+    # return cones1_new, cones2_new, weights
     return cones1_reordered, cones2, weights
+
 
 def recently_weighted_realign(cones1_input, cones2_input, T_current):
     cones1_reordered, cones2, weights1 = get_cones_and_weights(cones1_input, cones2_input, T_current)
     cones2_reordered, cones1, weights2 = get_cones_and_weights(cones2_input, cones1_input, inv(T_current))
     if cones1_reordered is None or cones2_reordered is None or cones1 is None or cones2 is None:
-        return T_current
+        return T_current, None, None
     c1_out = np.concatenate([cones1_reordered, cones1], axis=0)
     c2_out = np.concatenate([cones2, cones2_reordered], axis=0)
     weights_all = np.concatenate([weights1, weights2], axis=0)
@@ -178,9 +205,12 @@ def recently_weighted_realign(cones1_input, cones2_input, T_current):
         weights_all = np.delete(weights_all, to_delete, axis=0)
 
     if len(c1_out)/2 < NUM_CONES_REQ:
-        return T_current
+        return T_current, None, None
 
-    return wls(c1_out, c2_out, weights_all)
+    T_new = wls(c1_out, c2_out, weights_all)
+    residual = wls_residual(c1_out, c2_out, weights_all, T_new)
+    num_cones = len(c1_out)/2
+    return T_new, residual, num_cones
     
     
     

@@ -2,7 +2,7 @@ import numpy as np
 import motmetrics as mm
 from copy import deepcopy
 
-from utils.transform import transform
+from motlee.utils.transform import transform
 
 class MetricEvaluator():
 

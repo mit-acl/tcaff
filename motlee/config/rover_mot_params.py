@@ -1,6 +1,6 @@
 from enum import Enum
 
-Tau_LDA = .8
+Tau_LDA = 2.0
 Tau_GDA = .75
 # Tau_LDA = 2.5
 # Tau_GDA = 2.0
