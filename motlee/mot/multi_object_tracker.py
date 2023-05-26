@@ -355,7 +355,6 @@ class MultiObjectTracker():
             track_list = []
             for track in self.tracks:
                 track_list.append(track.state[0:2,:].reshape(-1).tolist())
-            print(track_list)
             return track_list
         else:
             print('you cannot do that')

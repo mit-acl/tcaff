@@ -20,20 +20,20 @@ PROP_T_FOR_REALIGN_INIT_GUESS = False
 
 class RoverMotFrontend():
     
-    def __init__(self, detection_bags, ped_bag, rovers, rover_pose_topic, cam_types, vids, noise, mot_params, register_time, metric_d, vicon_cones=False, viewer=False):
+    def __init__(self, detection_dirs, ped_dir, rovers, use_noisy_odom, cam_types, vids, noise, mot_params, register_time, metric_d, vicon_cones=False, viewer=False):
         self.viewer = viewer
-        self.GT = GroundTruth(bagfile=ped_bag)
+        self.GT = GroundTruth(csv_dir=ped_dir)
         self.vids = vids
         self.mots = []
         self.mes = [[]]
         self.full_mes = []
         self.detector = PersonDetector(
-            bagfiles=detection_bags, 
+            csv_dirs=detection_dirs, 
             sigma_t=noise[0], 
             sigma_r=noise[1], 
             cams=rovers, 
             cam_types=cam_types, 
-            cam_pose_topic=rover_pose_topic, 
+            use_noisy_odom=use_noisy_odom,
             register_time=register_time,
             vicon_cones=vicon_cones)
         self.num_rovers = len(rovers)
@@ -91,68 +91,11 @@ class RoverMotFrontend():
                         mot1.realigner.update_transform(j, T_new, residual, num_cones)
                         self.mots[i].realigner.update_transform(mot2.camera_id, T_new, residual, num_cones)
                         self.mots[i].realigner.update_transform(j, T_new, residual, num_cones)
-            # for mot in self.mots:
-            #     mot.cones = []
-            #     mot.new_cones = []
-            
-        # if realign and self.frame_time > self.detector.start_time + 100:
-        #     print('\tcones = [[], [], [], []]')
-        #     print('\tTs = [[], [], [], []]')
-        #     print('\tTs_true = [[], [], [], []]')
-        #     print('\tTs_error = [[], [], [], []]')
-        #     for i, mot in enumerate(self.mots[self.num_rovers:]):
-        #         print(f'\tcones[{i}] = np.array([')
-        #         for cone in mot.cones:                
-        #             print(f'\t[{cone.state.item(0)}, {cone.state.item(1)}],')
-        #         # for cone in self.detector.raw_cone_detections[i]:
-        #         #     print(f'\t[{cone[0]}, {cone[1]}],')
-        #         print('\t])')
-        #         print(f'\tTs[{i}] = [')
-        #         for mot2 in self.mots[self.num_rovers:]:
-        #             if i == mot2.camera_id or mot.camera_id == mot2.camera_id: continue
-        #             print(f'#{mot2.camera_id}')
-        #             print(f'\tnp.array({mot.realigner.transforms[mot2.camera_id].tolist()}), ')
-        #         print('\t]')
-        #     self.inform_true_pairwise_T()
-        #     for i, mot in enumerate(self.mots[self.num_rovers:]):
-        #         print(f'\tTs_true[{i}] = [')
-        #         for mot2 in self.mots[self.num_rovers:]:
-        #             if i == mot2.camera_id or mot.camera_id == mot2.camera_id: continue
-        #             print(f'#{mot2.camera_id}')
-        #             print(f'\tnp.array({mot.realigner.transforms[mot2.camera_id].tolist()}), ')
-        #         print('\t]')
-        #         T = self.detector.get_T_error(i, 'l515', self.frame_time)
-        #         print(f'\tTs_error[{i}] = [{T.tolist()}]')
-            
-        #     print('\treturn cones, Ts, Ts_true')
-        #     exit(0)
-            
+ 
         for i, mot in enumerate(self.mots[self.num_rovers:]):
             cones = self.detector.get_cones(i, 'l515', framenum, self.frame_time)
-            # if framenum % 30 == 0:
-            #     new_d = get_cone_debug_dict(self.frame_time, cones, self.detector.get_ordered_detections(['l515'])[0])
-            #     self.debug.append(new_d)
             mot.cone_update(cones, [np.diag([.5, .5]) for cone in cones])    
         if framenum % 1 == 0:
-            # new_d = get_realign_debug_dict(self.frame_time, self.mots[2], self.mots[3], 
-            #                                self.detector.get_ordered_detections(['l515'])[0], 
-            #                                self.detector.get_ordered_detections(['l515'])[1],
-            #                                self.detector.get_T_obj2_obj1(0, 'l515', 1, 'l515', self.frame_time))
-                # new_d = get_map_debug_dict(self.frame_time, mot, self.detector.get_ordered_detections(['l515'])[0])
-                # self.debug.append(new_d) 
-        
-            # more advanced heh
-            # new_l = []
-            # for j in range(self.num_rovers):
-            #     for i in range(self.num_rovers):
-            #         if i == j: continue
-            #         new_l.append(get_realign_debug_dict(self.frame_time, self.mots[self.num_rovers+j], self.mots[self.num_rovers+i], 
-            #                                self.detector.get_ordered_detections(['l515'])[j], 
-            #                                self.detector.get_ordered_detections(['l515'])[i],
-            #                                self.detector.get_T_obj2_obj1(j, 'l515', i, 'l515', self.frame_time)))
-            # self.debug.append(new_l)
-            
-            # even more advanced
             new_d = dump_everything_in_the_whole_world(self.frame_time, framenum, self.rover_names, self.mots[self.num_rovers:], self.detector.get_ordered_detections(['l515']), self.make_gt_list())
             # new_d = dump_mapping_info(self.frame_time, framenum, self.rover_names, self.mots[self.num_rovers:], self.detector.get_ordered_detections(['l515']))
             self.debug.append(new_d)

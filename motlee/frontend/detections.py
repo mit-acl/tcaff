@@ -2,26 +2,17 @@ import os
 import numpy as np
 from numpy.linalg import inv
 from scipy.spatial.transform import Rotation as Rot
-from bagpy import bagreader
 import pandas as pd
 import gtsam
 import glob
 import yaml
 
-# if __name__ == '__main__':
-#     from camera_calibration_mocap.cam_calib_mocap import get_calibrator
-#     import sys
-#     sys.path.append('..')
-# else:
-#     from .camera_calibration_mocap.cam_calib_mocap import get_calibrator
-# from motlee.frontend.camera_calibration_mocap import get_calibrator
 import motlee.config.data_params as PARAMS
 from motlee.utils.transform import transform
 from motlee.utils.cam_utils import pixel2groundplane
 
-def bag2poses(bagfile, topic):
-    pose_csv = bagfile.message_by_topic(topic)
-    pose_df = pd.read_csv(pose_csv, usecols=['header.stamp.secs', 'header.stamp.nsecs', 'pose.position.x', 'pose.position.y', 'pose.position.z',
+def csv2poses(csvfile):
+    pose_df = pd.read_csv(csvfile, usecols=['header.stamp.secs', 'header.stamp.nsecs', 'pose.position.x', 'pose.position.y', 'pose.position.z',
         'pose.orientation.x', 'pose.orientation.y', 'pose.orientation.z', 'pose.orientation.w'])
     positions = pd.DataFrame.to_numpy(pose_df.iloc[:, 2:5])
     orientations = pd.DataFrame.to_numpy(pose_df.iloc[:, 5:9])
@@ -30,21 +21,23 @@ def bag2poses(bagfile, topic):
 
 class Detections():
     
-    def __init__(self, T_BC, bagfile, pose_topic, detection_topic, register_time, sigma_r=0, sigma_t=0): 
+    def __init__(self, rover, T_BC, csv_dir, use_noisy_odom=False, register_time=0.0, sigma_r=0, sigma_t=0): 
         self.data = []
         self.time_diff_allowed = .4 # TODO: tunable parameter...?
+        
+        noisy_odom_addon = 't265_registered-' if use_noisy_odom else ''
+        csv_annot = f'{csv_dir}/{rover}-detections.csv'
+        csv_true_pose = f'{csv_dir}/{rover}-world.csv'
+        csv_bel_pose = f'{csv_dir}/{rover}-{noisy_odom_addon}world.csv'
+        
 
         # Extract data from bag files       
-        b = bagreader(bagfile, verbose=False)
-        annot_csv = b.message_by_topic(detection_topic)
-        annot_df = pd.read_csv(annot_csv, usecols= \
+        annot_df = pd.read_csv(csv_annot, usecols= \
             ['header.stamp.secs', 'header.stamp.nsecs', 'detections'])
         object_lists = annot_df.detections.values.tolist()
         self.times = pd.DataFrame.to_numpy(annot_df.iloc[:,0:1]) + pd.DataFrame.to_numpy(annot_df.iloc[:,1:2])*1e-9
-        positions_bel, orientations_bel, pose_times_bel = bag2poses(bagfile=b, topic=pose_topic)
-        veh = pose_topic.split('/')[1]
-        true_pose_topic = f'/{veh}/world'
-        positions_true, orientations_true, pose_times_true = bag2poses(bagfile=b, topic=true_pose_topic)
+        positions_bel, orientations_bel, pose_times_bel = csv2poses(csv_bel_pose)
+        positions_true, orientations_true, pose_times_true = csv2poses(csv_true_pose)
         
         self.num_frames = len(object_lists)
         
@@ -171,20 +164,17 @@ class Detections():
 
 class GroundTruth():
 
-    def __init__(self, bagfile, ped_list=[*range(1, 6)]):
+    def __init__(self, csv_dir, ped_list=[*range(1, 6)]):
         self.positions = dict()
         self.orientations = dict()
         self.times = dict()
         self.time_tol = .2
         self.ped_list = ped_list
 
-        # Extract data from bag files       
-        b = bagreader(bagfile, verbose=False)
-
         for ped in self.ped_list[:]:
             try:
-                topic = f'/PED{ped}/world'
-                self.positions[ped], self.orientations[ped], self.times[ped] = bag2poses(b, topic)
+                ped_csv = f'{csv_dir}/PED{ped}-world.csv'
+                self.positions[ped], self.orientations[ped], self.times[ped] = csv2poses(ped_csv)
             except:
                 self.ped_list.remove(ped)
                 continue
@@ -307,44 +297,9 @@ def intrinsic_calib(cam_name):
                 [0.0, 0.0, 1.0]])
     return K
 
-def get_epfl_frame_info(sigma_r=0, sigma_t=0):
-    
-    ########## Set up cameras ############
-    num_cams = 4
-    Rvec0 = np.array([1.9007833770e+00, 4.9730769727e-01, 1.8415452559e-01])
-    Rvec1 = np.array([1.9347282363e+00, -7.0418616982e-01, -2.3783238362e-01])
-    Rvec2 = np.array([-1.8289537286e+00, 3.7748154985e-01, 3.0218614321e+00])
-    Rvec3 = np.array([-1.8418460467e+00, -4.6728290805e-01, -3.0205552749e+00])
-    R0 = Rot.from_euler('xyz', 
-        Rvec0, degrees=False).as_matrix()
-    R1 = Rot.from_euler('xyz', 
-        Rvec1, degrees=False).as_matrix()
-    R2 = Rot.from_euler('xyz', 
-        Rvec2, degrees=False).as_matrix()
-    R3 = Rot.from_euler('xyz', 
-        Rvec3, degrees=False).as_matrix()
-
-    scaling = 1
-    T0 = np.array([[-4.8441913843e+03, 5.5109448682e+02, 4.9667438357e+03]]).T * scaling
-    T1 = np.array([[-65.433635, 1594.811988, 2113.640844]]).T * scaling
-    T2 = np.array([[1.9782813424e+03, -9.4027627332e+02, 1.2397750058e+04]]).T * scaling
-    T3 = np.array([[4.6737509054e+03, -2.5743341287e+01, 8.4155952460e+03]]).T * scaling
-
-    Rs = [R0, R1, R2, R3]
-    Ts = [R0.T @ T0, R1.T @ T1, R2.T @ T2, R3.T @ T3]
-    
-    fis = []
-    for i in range(num_cams):
-        # print(i)
-        fis.append(Detections(Rs[i], Ts[i], f'detections/cam{i}.bag', f'/camera{i}/centertrack/annotations', sigma_r=sigma_r, sigma_t=sigma_t))
-        
-    return fis
-
-def get_rover_detections(bagfile, register_time, sigma_r=0.0, sigma_t=0.0, 
-        rovers=['RR01', 'RR04', 'RR05', 'RR06', 'RR08'], cam_type='t265', rover_pose_topic='/world'): 
-    if 'dynamic' in bagfile:
-        tag_size = 0.1655
-        T_tag_fix = gtsam.Pose3(gtsam.Rot3.Rz(-np.pi/2),np.array([0,0,0])).matrix()
+def get_rover_detections(csv_dir, register_time, sigma_r=0.0, sigma_t=0.0, 
+        rovers=['RR01', 'RR04', 'RR05', 'RR06', 'RR08'], cam_type='t265', use_noisy_odom=False): 
+    if 'dynamic' in csv_dir:
         calibrations_exist = os.path.isfile(PARAMS.CAMERA_CALIB_FILE)
         
         if calibrations_exist:
@@ -352,29 +307,8 @@ def get_rover_detections(bagfile, register_time, sigma_r=0.0, sigma_t=0.0,
                 if cam_type not in yaml.full_load(f):
                     calibrations_exist = False
         if not calibrations_exist:
-            with open(PARAMS.CAMERA_CALIB_FILE, 'a') as f:
-                print(f'{cam_type}:', file=f)
-                for rover in rovers:
-                    calibrator = get_calibrator(cam_name=cam_type)
-                    if cam_type == 't265':
-                        cam_topic = f'/t265/fisheye1/image_raw/compressed'
-                    elif cam_type == 'd435':
-                        cam_topic = f'/d435/color/image_raw/compressed'
-                    elif cam_type == 'l515':
-                        cam_topic = f'/l515/color/image_raw/compressed'
-                    bagfiles = glob.glob(f'{PARAMS.DYNAMIC_DATA_DIR}/calib/{rover}/*.bag')
-                    T_BC = calibrator.find_T_body_camera(
-                        bagfiles=bagfiles,
-                        camera_topic=f'/{rover}{cam_topic}',
-                        tag_pose_topic='/tag_box/world',
-                        camera_pose_topic=f'/{rover}/world',
-                        tag_size=tag_size,
-                        T_tag_fix=T_tag_fix,
-                    )
-                    print(f'  {rover}: [', file=f, end='')
-                    for val in T_BC.reshape(-1).tolist():
-                        print(f'{val}, ', file=f, end='')
-                    print(f']', file=f)
+            assert False, f'cannot find calibration file: {PARAMS.CAMERA_CALIB_FILE}'
+            # Deprecated support for not including calibration
         
         with open(PARAMS.CAMERA_CALIB_FILE, 'r') as f:
             T_BCs = yaml.full_load(f)[cam_type]
@@ -390,16 +324,16 @@ def get_rover_detections(bagfile, register_time, sigma_r=0.0, sigma_t=0.0,
     detections = []
     for rover in rovers:
         detections.append(Detections(
+            rover=rover,
             T_BC=np.array(T_BCs[rover]).reshape((4, 4)),
-            bagfile=bagfile.format(rover), 
-            pose_topic=f'/{rover}{rover_pose_topic}',
-            detection_topic=f'/{rover}/detections', 
+            csv_dir=csv_dir.format(rover),
+            use_noisy_odom=use_noisy_odom,
             register_time=register_time,
             sigma_r=sigma_r, sigma_t=sigma_t))
         
     return detections
 
-def get_cone_detections(yamlfile='/home/masonbp/ford-project/data/dynamic-final/cone_detections/{}_detections.yaml', rovers=['RR01', 'RR04', 'RR06', 'RR08'], vicon=False):
+def get_cone_detections(yamlfile='/home/masonbp/ford/data/mot_dynamic/dynamic_motlee_iros/cone_detections/{}_detections.yaml', rovers=['RR01', 'RR04', 'RR06', 'RR08'], vicon=False):
     cone_detections = []
     with open(PARAMS.CAMERA_CALIB_FILE, 'r') as f:
         T_BCs = yaml.full_load(f)['l515']

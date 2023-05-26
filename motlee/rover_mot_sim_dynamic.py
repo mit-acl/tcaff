@@ -25,7 +25,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Annotate video sequence with ground truth')
     parser.add_argument('-r', '--root',
             type=str,
-            default='/home/masonbp/ford-project/data/dynamic-final',
+            default='/home/masonbp/ford/data/mot_dynamic/dynamic_motlee_iros',
             help='Dataset root directory')
     parser.add_argument('--run',
             type=int,
@@ -64,9 +64,9 @@ if __name__ == '__main__':
 
     root = pathlib.Path(args.root)
     if args.run == 1:
-        ped_bag = 'run1.bag'
-        detection_bags = [f'centertrack_detections/t265/{args.t265_conf}_0.1/run1_{{}}.bag',
-                          f'centertrack_detections/l515/{args.l515_conf}_0.5/run1_{{}}.bag']
+        ped_dir = 'gt/run1'
+        detection_dirs = [f'ped_detections/t265/run1_{{}}',
+                          f'ped_detections/l515/run1_{{}}']
         # final plot
         # FIRST_FRAME = 60*30
         # LAST_FRAME = 175*30 #150*30 #220*30 #7650
@@ -96,9 +96,9 @@ if __name__ == '__main__':
         # START_METRIC_FRAME = 15*30
         # register_time = 0
         # REALIGN_PERIOD = 1
-    ped_bag = str(root / ped_bag)
-    for i in range(len(detection_bags)):
-        detection_bags[i] = str(root / detection_bags[i])
+    ped_dir = str(root / ped_dir)
+    for i in range(len(detection_dirs)):
+        detection_dirs[i] = str(root / detection_dirs[i])
     if args.wls_only:
         PARAMS.realign_algorithm = PARAMS.RealignAlgorithm.REALIGN_WLS
     num_rovers = args.num_rovers
@@ -111,11 +111,11 @@ if __name__ == '__main__':
     rovers = ['RR04', 'RR06', 'RR08']
     cam_types = ['t265', 'l515']
     sim = RoverMotFrontend(
-        ped_bag=ped_bag,
+        ped_dir=ped_dir,
         mot_params=PARAMS,
-        detection_bags=detection_bags,
+        detection_dirs=detection_dirs,
         rovers=rovers[:num_rovers],
-        rover_pose_topic='/world' if not args.use_odom else '/t265_registered/world',
+        use_noisy_odom=args.use_odom,
         cam_types=cam_types,
         vids=get_videos(root, 't265', run=args.run, first_frame=FIRST_FRAME, rovers=rovers) + \
             get_videos(root, 'l515', run=args.run, first_frame=FIRST_FRAME, rovers=rovers),

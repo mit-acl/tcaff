@@ -10,26 +10,16 @@ from numpy.linalg import inv, norm
 
 class PersonDetector():
 
-    def __init__(self, bagfiles, device='cuda', sigma_r=0, sigma_t=0, 
+    def __init__(self, csv_dirs, sigma_r=0, sigma_t=0, 
                  cams=['RR01', 'RR04', 'RR05', 'RR06', 'RR08'], cam_types=['t265'], 
-                 cam_pose_topic='/world', register_time=16, vicon_cones=False):
-        # self.extractor = FeatureExtractor(
-        #     model_name='osnet_x1_0', # TODO: Is this a good enough re-id network?
-        #     # model_path='a/b/c/model.pth.tar',
-        #     device=device,
-        #     verbose=False
-        # )
-        # self.detections = dict()
-        # for c_type in cam_types:
-        #     self.detections[c_type] = get_rover_detections(bagfile=bagfile, sigma_r=sigma_r, sigma_t=sigma_t, 
-        #         rovers=cams, cam_type=c_type, rover_pose_topic=cam_pose_topic)
+                 use_noisy_odom=False, register_time=16, vicon_cones=False):
         self.detections = []
         for cam in cams:
             self.detections.append(dict())
-            for cam_type, bagfile in zip(cam_types, bagfiles):
-                self.detections[-1][cam_type] = get_rover_detections(bagfile=bagfile, register_time=register_time,
+            for cam_type, csv_dir in zip(cam_types, csv_dirs):
+                self.detections[-1][cam_type] = get_rover_detections(csv_dir=csv_dir, register_time=register_time,
                     sigma_r=sigma_r, sigma_t=sigma_t, 
-                    rovers=[cam], cam_type=cam_type, rover_pose_topic=cam_pose_topic)[0]
+                    rovers=[cam], cam_type=cam_type, use_noisy_odom=use_noisy_odom)[0]
 
 
         self.cone_detections = get_cone_detections(rovers=cams, vicon=vicon_cones)
@@ -56,6 +46,7 @@ class PersonDetector():
             positions.append(p.reshape(-1).tolist())
             boxes.append(b)
             features.append(self._get_box_features(b, im, cam_type))
+            
         return positions, boxes, features, Rs
     
     def get_cones(self, cam_num, cam_type, framenum, frame_time):

@@ -106,7 +106,6 @@ class FrameRealigner():
             scaling = self.tol_growth_rate * np.mean(T_mags) / self.T_mag_unity_tol
             # self.tolerance_scale = max(1, self.tolerance_scale * scaling) # does this cause crazy tau growth sometimes??
             self.tolerance_scale = max(1, scaling)
-        print(T_mags + [self.tolerance_scale])
         
     def rectify_detections(self, trackers):
         for tracker in trackers:
