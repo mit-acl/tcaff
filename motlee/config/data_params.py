@@ -1,5 +1,5 @@
 DATA_ROOT_PATH = '/home/masonbp/ford-project/data'
-DYNAMIC_DATA_DIR = DATA_ROOT_PATH + '/dynamic-20230206'
+DYNAMIC_DATA_DIR = DATA_ROOT_PATH + '/dynamic-final'
 DYNAMIC_RUNS = [
     'run0_2023-02-06-18-21-24.bag' # rovers weren't driving
     'run1_2023-02-06-18-24-57.bag' # hard moving run

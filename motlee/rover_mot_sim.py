@@ -100,7 +100,7 @@ if __name__ == '__main__':
     sim = RoverMotFrontend(
         detection_bag=detection_bag,
         ped_bag=ped_bag,
-        realign_algorithm=PARAMS.realign_algorithm,
+        mot_params=PARAMS,
         rovers=['RR01', 'RR04', 'RR05', 'RR06', 'RR08'][:num_cams],
         rover_pose_topic='/world',
         cam_type=args.cam_type,

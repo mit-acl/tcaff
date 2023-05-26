@@ -1,14 +1,14 @@
 import numpy as np
 from scipy.spatial.transform import Rotation
 import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
+from matplotlib.animation import FuncAnimation, FFMpegWriter
 import time
 
 import sys
 sys.path.append('..')
 sys.path.append('../src')
-from src.frontend.detections import get_epfl_frame_info, get_static_test_detections, get_dynamic_test_detections, GroundTruth
-GT = GroundTruth('/home/masonbp/ford-project/data/dynamic-20230206/run3_filtered.bag', ['1', '2', '4', '5'], 'RR01')
+from src.frontend.detections import get_rover_detections, GroundTruth
+GT = GroundTruth('/home/masonbp/ford-project/data/dynamic-final/run1.bag')
 
 def animate(i, start_frame, cams, bounds):
     minx, maxx, miny, maxy = bounds
@@ -23,7 +23,9 @@ def animate(i, start_frame, cams, bounds):
         for pose in cam.pos(t):
             x.append(pose[0])
             y.append(pose[1])
-        ax.plot([cam.cam_pos(t).item(0)], cam.cam_pos(t).item(1), 'o', color=colors[j], linewidth=3)
+        ax.plot([cam.T_WC(t)[0,3]], [cam.T_WC(t)[1,3]], '-o', color=colors[j], linewidth=3)
+        ax.plot([cam.T_WC(t+.5)[0,3]], [cam.T_WC(t+.5)[1,3]], '-o', color=colors[j], linewidth=3)
+        # ax.plot([[cam.T_WC(t)[0,3], cam.T_WC(t+.5)[0,3]], [cam.T_WC(t)[1,3], cam.T_WC(t+.5)[1,3]]], '-o', color=colors[j], linewidth=3)
         ax.plot(x, y, 'x', color=colors[j], linewidth=3)
 
     # plot ground truth
@@ -37,10 +39,18 @@ def animate(i, start_frame, cams, bounds):
     ax.set_ylim([miny,maxy])
     
 start_frame = 40
+end_frame = 2000
 
 ########### Set up detections ############
 # frame_infos = get_static_test_detections(run=1, sigma_r = 0*np.pi/180, num_cams=1, cam_type='t265')
-frame_infos = get_dynamic_test_detections()
+print('reading data...')
+frame_infos = get_rover_detections(
+    # bagfile=f'/home/masonbp/ford-project/data/dynamic-final/centertrack_detections/t265/0.5_0.1/run1_{{}}.bag',
+    bagfile=f'/home/masonbp/ford-project/data/dynamic-final/centertrack_detections/new_run/0.5_2.0/run1_RR01.bag',
+    rovers=['RR01'], #['RR01', 'RR04', 'RR06', 'RR08'],
+    cam_type='l515',
+    rover_pose_topic='/world'
+)
 num_cams = len(frame_infos)
 
 # mins = [np.inf, np.inf]
@@ -64,6 +74,15 @@ animate_lambda = lambda i : animate(i, start_frame, frame_infos, [minx_v, maxx_v
 fig, ax = plt.subplots()
 fig.set_dpi(240)
 
-ani = FuncAnimation(fig, animate_lambda, frames=frame_infos[0].num_frames-start_frame, interval=1, repeat=False)
+print('preparing video...')
+ani = FuncAnimation(fig, animate_lambda, frames=end_frame-start_frame, interval=10, repeat=False)
 
-plt.show()
+record = False
+if record:
+    # saving to m4 using ffmpeg writer
+    print('saving video...')
+    writervideo = FFMpegWriter(fps=60)
+    ani.save('detection_viewer_no_fix.mp4', writer=writervideo)
+    plt.close()
+else:
+    plt.show()

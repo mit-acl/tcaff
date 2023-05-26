@@ -97,8 +97,10 @@ if __name__ == '__main__':
     print(mh)
 
     if plot_type == 'avg':
-        x, y = mh.get_metric_along_line(metric, lambda x: x[1] == 0.0, 0, ret_type='avg')
-        plt.plot(x, y, '--o')
+        fig, ax1 = plt.subplots()
+        fig.set_dpi(240)
+        x, y = mh.get_metric_along_line(metric, lambda x: abs(x[1] - x[0] * 8.1712) < .01, 0, ret_type='avg')
+        plt.plot(x, y, '--o', color='navy')
         plt.title(f'Average {metric}')
         plt.xlabel('Translation Error Standard Dev (m)')
         plt.ylabel(metric)
