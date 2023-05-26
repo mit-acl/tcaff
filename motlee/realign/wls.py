@@ -3,6 +3,7 @@ import numpy as np
 from motlee.utils.transform import transform
 
 def wls(pts1, pts2, weights):
+    weights = weights.reshape((-1,1))
     mean1 = (np.sum(pts1 * weights, axis=0) / np.sum(weights)).reshape(-1)
     mean2 = (np.sum(pts2 * weights, axis=0) / np.sum(weights)).reshape(-1)
     det1_mean_reduced = pts1 - mean1

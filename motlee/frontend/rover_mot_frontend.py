@@ -85,12 +85,12 @@ class RoverMotFrontend():
                         T_guess = mot1.realigner.get_transform_p1(mot2.camera_id)
                         T_new = realign_cones(mot1.cones, mot2.cones, T_guess)
                     else:
-                        T_new = realign_cones(mot1.cones, mot2.cones, T_current)
+                        T_new, residual, num_cones = realign_cones(mot1.cones, mot2.cones, T_current)
                     if mot1.realigner.T_mag(T_new @ np.linalg.inv(T_current)) < T_MAG_STATIC_OBJ_REALIGN_THRESH: #and self.get_filtered_T_mag(T_new @ np.linalg.inv(T_current), 'psi') < 8:
-                        mot1.realigner.update_transform(mot2.camera_id, T_new)
-                        mot1.realigner.update_transform(j, T_new)
-                        self.mots[i].realigner.update_transform(mot2.camera_id, T_new)
-                        self.mots[i].realigner.update_transform(j, T_new)
+                        mot1.realigner.update_transform(mot2.camera_id, T_new, residual, num_cones)
+                        mot1.realigner.update_transform(j, T_new, residual, num_cones)
+                        self.mots[i].realigner.update_transform(mot2.camera_id, T_new, residual, num_cones)
+                        self.mots[i].realigner.update_transform(j, T_new, residual, num_cones)
             # for mot in self.mots:
             #     mot.cones = []
             #     mot.new_cones = []
@@ -304,6 +304,15 @@ class RoverMotFrontend():
                 T_avg_i += self.get_filtered_T_mag(inv(T) @ T_est, filter=filter) / (self.num_rovers - 1)
             T_avg += T_avg_i / (self.num_rovers)
         return T_avg
+    
+    def get_residual_and_cones(self):
+        residuals, num_cones = [], []
+        for i, mot1 in enumerate(self.mots[self.num_rovers:]):
+            for j, mot2 in enumerate(self.mots[self.num_rovers:]):
+                if mot1 == mot2: continue
+                residuals.append(mot1.realigner.realign_residual[mot2.camera_id])
+                num_cones.append(mot1.realigner.realign_num_cones[mot2.camera_id])
+        return residuals, num_cones        
     
     def get_all_T_diffs(self, filter=None):
         T_diffs = []

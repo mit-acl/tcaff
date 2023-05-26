@@ -19,7 +19,7 @@ setup(
                         'tqdm',
                         'motmetrics',
                         'bagpy',
-                        'open3d'
+                        'open3d==0.17.0'
                       ],
 
     # classifiers=[

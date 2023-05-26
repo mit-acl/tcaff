@@ -22,6 +22,8 @@ class FrameRealigner():
         self.realigns_since_change = dict()
         self.last_change_Tmag = dict()
         self.T_last = dict()
+        self.realign_residual = dict()
+        self.realign_num_cones = dict()
         for cam in connected_cams:
             self.transforms[cam] = np.eye(4)
             self.transform_covs[cam] = np.eye(3) if RECURSIVE_LEAST_SQUARES else np.eye(6)
@@ -29,6 +31,8 @@ class FrameRealigner():
             self.T_last[cam] = np.eye(4)
             self.realigns_since_change[cam] = 0
             self.last_change_Tmag[cam] = 0
+            self.realign_residual[cam] = 0
+            self.realign_num_cones[cam] = 0
         self.detections_min_num = params.detections_min_num
         self.tol_growth_rate = params.tolerance_growth_rate
         self.T_mag_unity_tol = params.transform_mag_unity_tolerance
@@ -142,7 +146,7 @@ class FrameRealigner():
                 
         self.new_transforms = dict()
         
-    def update_transform(self, cam_id, transform):
+    def update_transform(self, cam_id, transform, alignment_residual=None, alignment_num_cones=None):
         if not np.allclose(self.transforms[cam_id], transform):
             self.realigns_since_change[cam_id] = 0
             self.last_change_Tmag[cam_id] = T_mag(transform @ np.linalg.inv(self.transforms[cam_id]), self.deg2m)
@@ -173,6 +177,8 @@ class FrameRealigner():
             self.transform_ders[cam_id] = xkp1[3:,:]
         else:
             self.transforms[cam_id] = transform
+            self.realign_residual[cam_id] = alignment_residual
+            self.realign_num_cones[cam_id] = alignment_num_cones
 
     def get_transform_p1(self, cam_id):
         if KF:

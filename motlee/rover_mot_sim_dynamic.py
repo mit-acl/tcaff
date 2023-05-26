@@ -59,7 +59,7 @@ if __name__ == '__main__':
     parser.add_argument('--l515-conf',
             type=float, default=.6)
     parser.add_argument('--json-file', type=str, default=None)
-    parser.add_argument('--metric-dist', type=float, default=0.75)
+    parser.add_argument('--metric-dist', type=float, default=1.0)
     args = parser.parse_args()
 
     root = pathlib.Path(args.root)
@@ -162,6 +162,9 @@ if __name__ == '__main__':
             print(f't_diff: {v}')
             v = sim.get_all_T_diffs(filter='t')
             print(f't_diff_list: {v}')
+            residuals, num_cones = sim.get_residual_and_cones()
+            print(f'residuals: {residuals}')
+            print(f'num_cones: {num_cones}')
             # det_v = []
             # det_p = []
             # det_q = []
