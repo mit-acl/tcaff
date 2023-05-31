@@ -3,6 +3,7 @@ from numpy.linalg import inv
 import cv2 as cv
 import matplotlib.pyplot as plt
 from scipy.spatial.transform import Rotation as Rot
+from copy import deepcopy
 
 from motlee.frontend.person_detector import PersonDetector
 from motlee.frontend.detections import GroundTruth
@@ -13,6 +14,7 @@ from motlee.realign.realign_frames import realign_cones, recently_weighted_reali
 from motlee.utils.transform import transform, T_mag
 from motlee.utils.debug_help import *
 from motlee.utils.cam_utils import pt_is_seeable
+from motlee.config.track_params import TrackParams, ConeParams
 
 T_MAG_STATIC_OBJ_REALIGN_THRESH = 5
 SKIP_RR01_IN_VIEW = False
@@ -25,6 +27,7 @@ class RoverMotFrontend():
         self.GT = GroundTruth(csv_dir=ped_dir)
         self.vids = vids
         self.mots = []
+        self.cone_trackers = []
         self.mes = [[]]
         self.full_mes = []
         self.detector = PersonDetector(
@@ -38,9 +41,15 @@ class RoverMotFrontend():
             vicon_cones=vicon_cones)
         self.num_rovers = len(rovers)
         self.cam_types = cam_types
+
+        cone_tracker_params = deepcopy(mot_params)
+        cone_tracker_params.Tau_LDA = cone_tracker_params.cone_Tau
+        cone_tracker_params.merge_range_m = cone_tracker_params.cone_merge_range_m
+        for i in range(self.num_rovers):
+            self.cone_trackers.append(MultiObjectTracker(i, connected_cams=[], params=cone_tracker_params, track_params=ConeParams()))
         for i in range(2*self.num_rovers):
             connected_cams = [*range(2*self.num_rovers)]; connected_cams.remove(i)
-            self.mots.append(MultiObjectTracker(i, connected_cams=connected_cams, params=mot_params))
+            self.mots.append(MultiObjectTracker(i, connected_cams=connected_cams, params=mot_params, track_params=TrackParams()))
             self.mes[0].append(MetricEvaluator(max_d=metric_d))
             self.full_mes.append(MetricEvaluator(max_d=metric_d))
         self.rover_names = rovers
@@ -77,24 +86,32 @@ class RoverMotFrontend():
         # Frame Realignment
         if realign:
             # for mot in self.mots: mot.frame_realign()
-            for i, mot1 in enumerate(self.mots[self.num_rovers:]):
-                for j, mot2 in enumerate(self.mots[self.num_rovers:]):
+            for i, (mot1, cones1) in enumerate(zip(self.mots[self.num_rovers:], self.cone_trackers)):
+                for j, (mot2, cones2) in enumerate(zip(self.mots[self.num_rovers:], self.cone_trackers)):
                     if mot1 == mot2: continue
                     T_current = mot1.realigner.transforms[mot2.camera_id]
                     if PROP_T_FOR_REALIGN_INIT_GUESS:
                         T_guess = mot1.realigner.get_transform_p1(mot2.camera_id)
-                        T_new = realign_cones(mot1.cones, mot2.cones, T_guess)
+                        T_new = realign_cones(cones1.tracks, cones2.tracks, T_guess)
                     else:
-                        T_new, residual, num_cones = realign_cones(mot1.cones, mot2.cones, T_current)
+                        T_new, residual, num_cones = realign_cones(cones1.tracks, cones2.tracks, T_current)
                     if mot1.realigner.T_mag(T_new @ np.linalg.inv(T_current)) < T_MAG_STATIC_OBJ_REALIGN_THRESH: #and self.get_filtered_T_mag(T_new @ np.linalg.inv(T_current), 'psi') < 8:
                         mot1.realigner.update_transform(mot2.camera_id, T_new, residual, num_cones)
                         mot1.realigner.update_transform(j, T_new, residual, num_cones)
                         self.mots[i].realigner.update_transform(mot2.camera_id, T_new, residual, num_cones)
                         self.mots[i].realigner.update_transform(j, T_new, residual, num_cones)
  
-        for i, mot in enumerate(self.mots[self.num_rovers:]):
+        for i, cone_tracker in enumerate(self.cone_trackers):
             cones = self.detector.get_cones(i, 'l515', framenum, self.frame_time)
-            mot.cone_update(cones, [np.diag([.5, .5]) for cone in cones])    
+            for i in range(len(cones)):
+                cones[i] = cones[i][:2,:]
+            cone_tracker.local_data_association(cones, np.zeros(len(cones)), [np.diag([.5, .5]) for cone in cones])    
+            for cone in cone_tracker.tracks + cone_tracker.new_tracks:
+                cone.correction()
+                cone.cycle()
+                if cone.ell > 600:
+                    cone_tracker.tracks.remove(cone)
+
         if framenum % 1 == 0:
             new_d = dump_everything_in_the_whole_world(self.frame_time, framenum, self.rover_names, self.mots[self.num_rovers:], self.detector.get_ordered_detections(['l515']), self.make_gt_list())
             # new_d = dump_mapping_info(self.frame_time, framenum, self.rover_names, self.mots[self.num_rovers:], self.detector.get_ordered_detections(['l515']))

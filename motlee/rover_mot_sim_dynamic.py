@@ -6,7 +6,7 @@ import cv2 as cv
 from tqdm import tqdm
 
 from metrics.metric_evaluator import MetricEvaluator, print_metric_results
-import config.rover_mot_params as PARAMS
+from config import rover_mot_params
 
 from frontend.rover_mot_frontend import RoverMotFrontend
 
@@ -99,8 +99,9 @@ if __name__ == '__main__':
     ped_dir = str(root / ped_dir)
     for i in range(len(detection_dirs)):
         detection_dirs[i] = str(root / detection_dirs[i])
+    PARAMS = rover_mot_params.RoverMOTParams()
     if args.wls_only:
-        PARAMS.realign_algorithm = PARAMS.RealignAlgorithm.REALIGN_WLS
+        PARAMS.realign_algorithm = rover_mot_params.RealignAlgorithm.REALIGN_WLS
     num_rovers = args.num_rovers
     PARAMS.n_meas_to_init_tracker = args.init_cnt
     PARAMS.kappa = 4

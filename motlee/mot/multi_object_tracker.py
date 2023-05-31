@@ -6,17 +6,16 @@ from scipy.linalg import logm
 from copy import deepcopy
 
 from motlee.mot.track import Track
-from motlee.config.track_params import TrackParams
 from motlee.realign.frame_realigner import FrameRealigner, RECURSIVE_LEAST_SQUARES, KF
 from motlee.utils.transform import transform
 
 NUM_CAMS = 4
 COV_MAG = .01
 USE_NLML = True
-MERGE_RANGE_M = .15
+
 class MultiObjectTracker():
 
-    def __init__(self, camera_id, connected_cams, params):
+    def __init__(self, camera_id, connected_cams, params, track_params):
         self.connected_cams = connected_cams
         self.realigner = FrameRealigner(
             cam_id=camera_id,
@@ -27,17 +26,15 @@ class MultiObjectTracker():
         self.Tau_LDA = params.Tau_LDA
         self.Tau_GDA = params.Tau_GDA
         self.Tau_grown = 1
-        self.Tau_cone = 0.5
         
         self.alpha = params.alpha
         self.kappa = params.kappa
         self.tracks = []
         self.new_tracks = []
         self.old_tracks = []
-        self.cones = []
-        self.new_cones = []
         self.next_available_id = 0
         self.n_meas_to_init_track = params.n_meas_to_init_track
+        self.merge_range_m = params.merge_range_m
         
         self.camera_id = camera_id
         self.track_mapping = dict()
@@ -51,6 +48,7 @@ class MultiObjectTracker():
             
         self.pose = None
         self.MDs = []
+        self.track_params = track_params
         
 
     def local_data_association(self, Zs, feature_vecs, Rs):
@@ -65,7 +63,7 @@ class MultiObjectTracker():
             for i in range(len(Zs)):
                 for j in range(len(Zs)):
                     if i == j: continue
-                    if norm(Zs[i][:2,:] - Zs[j][:2,:]) < MERGE_RANGE_M:
+                    if norm(Zs[i][:2,:] - Zs[j][:2,:]) < self.merge_range_m:
                         need_to_merge = True
                         break
                 if need_to_merge:
@@ -132,85 +130,18 @@ class MultiObjectTracker():
                 self.new_tracks.remove(track)
 
         for z_idx in unassociated:
-            new_track = Track(self.camera_id, self.next_available_id, TrackParams(), [Zs[z_idx]], np.vstack([Zs[z_idx], np.zeros((2,1))]))
+            # zero velocity initial state
+            if self.track_params.A.shape[0] == Zs[z_idx].shape[0]:
+                init_state = Zs[z_idx]
+            else:
+                init_state = np.vstack([Zs[z_idx], np.zeros((self.track_params.A.shape[0] - Zs[z_idx].shape[0],1))])
+            new_track = Track(self.camera_id, self.next_available_id, self.track_params, [Zs[z_idx]], init_state)
             new_track.update([Zs[z_idx]], Rs[z_idx])
             self.new_tracks.append(new_track)
             self.next_available_id += 1
 
         for track in self.tracks + self.new_tracks:
             track.predict()
-            
-    def cone_update(self, Zs, Rs):
-        for i in range(len(Zs)):
-            Zs[i] = Zs[i][:2,:].reshape(-1).reshape((2, 1))
-        all_cones = self.cones + self.new_cones
-        geometry_scores = np.zeros((len(all_cones), len(Zs)))
-        large_num = 1000
-        for i, track in enumerate(all_cones):
-            Hx_xy = (track.H @ track.state)[0:2,:]
-            for j, (Z, R) in enumerate(zip(Zs, Rs)):
-                z_xy = Z[0:2,:]
-                V = track.P[:2, :2] + R
-                # Mahalanobis distance
-                d = np.sqrt((z_xy - Hx_xy).T @ np.linalg.inv(V) @ (z_xy - Hx_xy)).item(0)
-                
-                # Geometry similarity value
-                if not d < self.Tau_cone:
-                    s_d = large_num
-                elif USE_NLML:
-                    s_d = 1/self.alpha*(2*np.log(2*np.pi) + d**2 + np.log(np.linalg.det(V)))
-                else:
-                    s_d = 1/self.alpha*d
-                if np.isnan(s_d):
-                    s_d = large_num
-                geometry_scores[i,j] = s_d
-
-        unassociated = []
-        product_scores = geometry_scores 
-        # augment cost to add option for no associations
-        hungarian_cost = np.concatenate([
-            np.concatenate([product_scores, np.ones(product_scores.shape)], axis=1),
-            np.ones((product_scores.shape[0], 2*product_scores.shape[1]))], axis=0)
-        row_ind, col_ind = linear_sum_assignment(hungarian_cost)
-        for t_idx, z_idx in zip(row_ind, col_ind):
-            # track and measurement associated together
-            if t_idx < len(all_cones) and z_idx < len(Zs):
-                assert product_scores[t_idx,z_idx] < 1
-                all_cones[t_idx].update([Zs[z_idx]], Rs[z_idx])        
-            # unassociated measurement
-            elif z_idx < len(Zs):
-                unassociated.append(z_idx)
-            # unassociated track or augmented part of matrix
-            else:
-                continue
-            
-        # if there are no tracks, hungarian matrix will be empty, handle separately
-        if len(all_cones) == 0:
-            for z_idx in range(len(Zs)):
-                unassociated.append(z_idx)
-
-        for cone in self.new_cones:
-            if cone.frames_seen >= self.n_meas_to_init_track:
-                self.cones.append(cone)
-                self.new_cones.remove(cone)
-            elif not cone.seen:
-                self.new_cones.remove(cone)
-
-        for z_idx in unassociated:
-            new_cone = Track(self.camera_id, self.next_available_id, TrackParams(), [Zs[z_idx]], np.vstack([Zs[z_idx], np.zeros((2,1))]))
-            new_cone.A = np.eye(4); new_cone.A[2:,2:] = np.zeros((2,2))
-            new_cone.Q = np.eye(4)
-            new_cone.update([np.copy(Zs[z_idx])], Rs[z_idx])
-            new_cone.seen_by_this_camera = True
-            self.new_cones.append(new_cone)
-            self.next_available_id += 1
-
-        for cone in self.cones + self.new_cones:
-            cone.predict()
-            cone.correction()
-            cone.cycle()
-            if cone.ell > 600:
-                self.cones.remove(cone)
 
     def dkf(self):  
         for track in self.tracks + self.new_tracks:
@@ -488,7 +419,7 @@ class MultiObjectTracker():
             if local_track_id == None:
                 mean_xbar /= group_size
                 local_track_id = (self.camera_id, self.next_available_id)
-                new_track = Track(self.camera_id, self.next_available_id, TrackParams(), [mean_xbar[0:4,:]], mean_xbar)                
+                new_track = Track(self.camera_id, self.next_available_id, self.track_params, [mean_xbar[0:4,:]], mean_xbar)                
                 self.tracks.append(new_track)
                 self.next_available_id += 1
                 group_by_id.append(local_track_id)
@@ -504,7 +435,7 @@ class MultiObjectTracker():
     def manage_deletions(self):
         for track in self.old_tracks:
             track.cycle()
-            if track.dead_cnt > TrackParams().n_dets:
+            if track.dead_cnt > self.track_params.n_dets:
                 self.old_tracks.remove(track)
         for track in self.tracks + self.new_tracks:
             track.cycle()
