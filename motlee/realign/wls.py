@@ -2,7 +2,9 @@ import numpy as np
 
 from motlee.utils.transform import transform
 
-def wls(pts1, pts2, weights):
+def wls(pts1, pts2, weights=None):
+    if weights is None:
+        weights = np.ones((pts1.shape[0],1))
     weights = weights.reshape((-1,1))
     mean1 = (np.sum(pts1 * weights, axis=0) / np.sum(weights)).reshape(-1)
     mean2 = (np.sum(pts2 * weights, axis=0) / np.sum(weights)).reshape(-1)
