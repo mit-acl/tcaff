@@ -132,27 +132,6 @@ def get_cones_and_weights(cones1_input, cones2_input, T_current, ages1=None, age
         cone1_ptcld = o3d.t.geometry.PointCloud(cones1)
         cone2_ptcld = o3d.t.geometry.PointCloud(cones2)
         correspondence_set2 = realign_frames(cone1_ptcld, cone2_ptcld, T_current, max_dist=ICP_MAX_DIST).correspondences_.numpy()
-
-
-        #
-        # open 3d 0.13.0
-        #
-        #
-        # cone1_ptcld = o3d.t.geometry.PointCloud(o3d.cuda.pybind.core.Tensor(cones1.astype(np.float32)))
-        # cone2_ptcld = o3d.t.geometry.PointCloud(o3d.cuda.pybind.core.Tensor(cones2.astype(np.float32)))
-    #     correspondence_set = realign_frames(cone1_ptcld, cone2_ptcld, T_current, max_dist=ICP_MAX_DIST).correspondence_set
-    #     cs2, cs1 = correspondence_set[0].numpy().reshape(-1).tolist(), correspondence_set[1].numpy().reshape(-1).tolist()
-    
-    # cones1_new = np.zeros((len(cs1), cones1.shape[1]))
-    # cones2_new = np.zeros((len(cs2), cones2.shape[1]))
-    # ages1_new = np.zeros(len(cs1))
-    # ages2_new = np.zeros(len(cs2))
-    # for i, (c1, c2) in enumerate(zip(cs1, cs2)):
-    #     cones1_new[i,:] = cones1[c1,:]
-    #     cones2_new[i,:] = cones2[c2,:]
-    #     ages1_new[i] = ages1[c1]
-    #     ages2_new[i] = ages2[c2]
-
         
     cones1_reordered = np.zeros(cones2.shape)
     ages1_reordered = np.zeros((cones2.shape[0], 1))

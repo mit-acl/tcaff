@@ -98,6 +98,18 @@ def dump_everything_in_the_whole_world(frametime, framenum, rovers, mots, detect
         d['rovers'][r] = r_dict
     return d
 
+def dump_single_rover_mapping_tracks(frametime, framenum, rover, mot, cone_mapper, det):
+    d = dict()
+    d['frametime'] = frametime
+    d['framenum'] = framenum
+    d['rover'] = rover
+    
+    d['T_WC'] = det.T_WC(frametime, T_BC=det.T_BC, true_pose=True).reshape(-1).tolist()
+    d['T_WC_bel'] = det.T_WC(frametime, T_BC=det.T_BC, true_pose=False).reshape(-1).tolist()
+    d['tracks'] = mot.get_tracks(format='list')
+    d['cones'] = cone_mapper.get_tracks(format='list')
+    return d
+
 def dump_mapping_info(frametime, framenum, rovers, mots, detections):
     d = dict()
     d['frametime'] = frametime

@@ -33,6 +33,9 @@ def T_mag(T, deg2m):
     return np.abs(rot_mag) + np.abs(t_mag)
 
 def transform_2_xypsi(T):
+    dim = T.shape[1] - 1
+    if dim == 2:
+        T = T2d_2_T3d(T)
     x = T[0,3]
     y = T[1,3]
     psi = Rot.from_matrix(T[:3,:3]).as_euler('xyz', degrees=False)[2]
@@ -50,3 +53,13 @@ def pos_quat_to_transform(pos, quat):
     T[:3,:3] = Rot.from_quat(quat).as_matrix()
     T[:3,3] = pos.reshape(-1)
     return T
+
+def T3d_2_T2d(T3d):
+    T2d = np.delete(np.delete(T3d, 2, axis=0), 2, axis=1)
+    return T2d
+
+def T2d_2_T3d(T2d):
+    T3d = np.eye(4)
+    T3d[:2,:2] = T2d[:2,:2]
+    T3d[:2,3] = T2d[:2,2]
+    return T3d
