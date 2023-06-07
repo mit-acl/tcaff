@@ -45,6 +45,9 @@ if __name__ == '__main__':
             type=int,
             default=4,
             help='Number of cameras to use in simulation')
+    parser.add_argument('--rovers',
+            type=str,
+            default='468')
     parser.add_argument('--realign',
             action='store_true',
             help='Robots will perform frame realignment')
@@ -109,7 +112,7 @@ if __name__ == '__main__':
     vicon_cones = False
     metric_d = args.metric_dist
 
-    rovers = ['RR04', 'RR06', 'RR08']
+    rovers = [f'RR0{i}' for i in args.rovers]
     cam_types = ['t265', 'l515']
     sim = RoverMotFrontend(
         ped_dir=ped_dir,

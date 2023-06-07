@@ -10,7 +10,7 @@ from motlee.frontend.detections import GroundTruth
 from motlee.mot.multi_object_tracker import MultiObjectTracker
 from motlee.metrics.metric_evaluator import MetricEvaluator
 from motlee.metrics.inconsistency_counter import InconsistencyCounter
-from motlee.realign.realign_frames import realign_cones, recently_weighted_realign
+from motlee.realign.realign_frames import realign_cones
 from motlee.utils.transform import transform, T_mag
 from motlee.utils.debug_help import *
 from motlee.utils.cam_utils import pt_is_seeable
@@ -114,6 +114,7 @@ class RoverMotFrontend():
 
         if framenum % 1 == 0:
             new_d = dump_everything_in_the_whole_world(self.frame_time, framenum, self.rover_names, self.mots[self.num_rovers:], self.detector.get_ordered_detections(['l515']), self.make_gt_list())
+            # new_d = dump_single_rover_mapping_tracks(self.frame_time, framenum, self.rover_names[0], self.mots[self.num_rovers:][0], self.cone_trackers[0], self.detector.get_ordered_detections(['l515'])[0])
             # new_d = dump_mapping_info(self.frame_time, framenum, self.rover_names, self.mots[self.num_rovers:], self.detector.get_ordered_detections(['l515']))
             self.debug.append(new_d)
             

@@ -1,4 +1,5 @@
 import numpy as np
+from numpy.linalg import det
 
 from motlee.utils.transform import transform
 
@@ -12,8 +13,12 @@ def wls(pts1, pts2, weights=None):
     det2_mean_reduced = pts2 - mean2
     assert det1_mean_reduced.shape == det2_mean_reduced.shape
     H = det1_mean_reduced.T @ (det2_mean_reduced * weights)
-    U, s, V = np.linalg.svd(H)
-    R = U @ V.T
+    U, s, Vh = np.linalg.svd(H)
+    R = U @ Vh
+    if np.allclose(det(R), -1.0):
+        Vh_prime = Vh.copy()
+        Vh_prime[-1,:] *= -1.0
+        R = U @ Vh_prime
     t = mean1.reshape((-1,1)) - R @ mean2.reshape((-1,1))
     T = np.concatenate([np.concatenate([R, t], axis=1), np.hstack([np.zeros((1, R.shape[0])), [[1]]])], axis=0)
     return T
