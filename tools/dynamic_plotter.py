@@ -130,7 +130,9 @@ for metric_file in args.metric_file[:num_lines]:
 ############## Plotting  ###################
 ############################################
 
-colors = ['tab:red', 'navy', 'tab:orange', 'tab:green']
+colors = ['tab:green', 'tab:red', 'navy', 'tab:orange']
+# linestyles = [(0, (1,1)), 'dashed', 'dashdot', 'solid']
+linestyles = ['solid', 'solid', 'solid', 'solid']
 
 if not args.metric_only:
     f, (ax) = plt.subplots(3, 1, sharex=True, figsize=[8, 4.8])
@@ -140,7 +142,7 @@ if not args.metric_only:
     for i, s in enumerate(score_list):
         t = [*range(s.shape[0])]
         t = np.array(t) * args.sample_len
-        ax[0].plot(t, s[:, 0], color=colors[i])
+        ax[0].plot(t, s[:, 0], color=colors[i], linestyle=linestyles[i])
     ax[0].set_ylabel('MOTA')
     ax[0].set_ylim([0, 1])
 
@@ -150,8 +152,8 @@ if not args.metric_only:
     for i, s in enumerate(score_list):
         t = [*range(s.shape[0])]
         t = np.array(t) * args.sample_len
-        ax[1].plot(t, s[:, 2], color=colors[i])
-        ax[2].plot(t, s[:, 3], color=colors[i])
+        ax[1].plot(t, s[:, 2], color=colors[i], linestyle=linestyles[i])
+        ax[2].plot(t, s[:, 3], color=colors[i], linestyle=linestyles[i])
     ax[1].set_ylabel('Heading error (deg)')
     ax[1].grid(True)
     ax[2].set_ylabel('Translation error (m)')
@@ -173,12 +175,12 @@ else:
         t = [*range(len(s))]
         t = np.array(t) * args.sample_len
         if not args.metric_is_list:
-            ax.plot(t, s[:, 0], color=colors[i])
+            ax.plot(t, s[:, 0], color=colors[i], linestyle=linestyles[i])
         elif args.metric_plot_avg:
             avgs = []
             for j, step in enumerate(s):
                 avgs.append(np.mean(step[0]))
-            ax.plot(t, smooth(avgs, 0.9), color=colors[i])
+            ax.plot(t, smooth(avgs, 0.9), color=colors[i], linestyle=linestyles[i])
         else:
             for j, step in enumerate(s):
                 data_pts = step[0]

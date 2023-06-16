@@ -46,6 +46,11 @@ class RoverJSONParser():
     
     def get_tracks(self, framenum, est=False):
         return self._get_objects(framenum, 'tracks', est=est)
+    
+    def get_T_WC(self, framenum, est=False):
+        idx = self.idx(framenum)
+        T_WC = np.array(self.data[idx]['T_WC_bel' if est else 'T_WC']).reshape((4,4))
+        return T_WC
         
     def _get_objects(self, framenum, object_name, est=False):
         idx = self.idx(framenum)
