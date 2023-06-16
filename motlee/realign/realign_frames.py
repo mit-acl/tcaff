@@ -14,12 +14,12 @@ import clipperpy
 
 # STARTING A LIST OF MAGIC NUMBERS HERE
 NUM_CONES_REQ = 8
-DATA_ASSOCIATION_METHOD = 'icp'
-# DATA_ASSOCIATION_METHOD = 'clipper'
+# DATA_ASSOCIATION_METHOD = 'icp'
+DATA_ASSOCIATION_METHOD = 'clipper'
 ONLY_STRONG_CORRESPONDENCES = True
 ICP_MAX_DIST = 1.0
-CLIPPER_SIG = 0.3
-CLIPPER_EPS = 0.4
+CLIPPER_SIG = 0.35
+CLIPPER_EPS = 0.3
 
 def detections2pointcloud(detections, org_by_tracks):
     dets_cp = []
@@ -116,8 +116,12 @@ def clipper_inlier_associations(Ain, pts1, pts2, weights1=None, weights2=None):
             weights2_corres[i] = weights2[Ain[i,1]]
     return pts1_corres, pts2_corres, weights1_corres, weights2_corres
 
-def icp_data_association(cones1_input, cones2_input, T_current, ages1=None, ages2=None):
-    if ages1 is None and ages2 is None:
+def icp_data_association(cones1_input, cones2_input, T_current, ages1=None, ages2=None, has_ages=True):
+    if not has_ages:
+        ages1 = np.ones((len(cones1_input), 1))
+        ages2 = np.ones((len(cones2_input), 1))
+        cones1 = np.array(cones1_input); cones2 = np.array(cones2_input)
+    elif ages1 is None and ages2 is None:
         cones1 = []; ages1 = []
         cones2 = []; ages2 = []
         for cone in cones1_input:
@@ -163,12 +167,12 @@ def icp_data_association(cones1_input, cones2_input, T_current, ages1=None, ages
     # return cones1_new, cones2_new, weights
     return cones1_reordered, cones2, weights
 
-def realign_cones(cones1_input, cones2_input, T_current):
+def realign_cones(cones1_input, cones2_input, T_current, has_ages=True):
     if len(cones1_input) == 0 or len(cones2_input) == 0:
         return T_current, None, None
     if DATA_ASSOCIATION_METHOD == 'icp':
-        cones1_reordered, cones2, weights1 = icp_data_association(cones1_input, cones2_input, T_current)
-        cones2_reordered, cones1, weights2 = icp_data_association(cones2_input, cones1_input, inv(T_current))
+        cones1_reordered, cones2, weights1 = icp_data_association(cones1_input, cones2_input, T_current, has_ages=has_ages)
+        cones2_reordered, cones1, weights2 = icp_data_association(cones2_input, cones1_input, inv(T_current), has_ages=has_ages)
         if cones1_reordered is None or cones2_reordered is None or cones1 is None or cones2 is None:
             return T_current, None, None
         c1_out = np.concatenate([cones1_reordered, cones1], axis=0)
@@ -211,4 +215,5 @@ def realign_cones(cones1_input, cones2_input, T_current):
     if T_new.shape[0] == 3 and T_new.shape[1] == 3:
         T_new = T2d_2_T3d(T_new)
     residual = wls_residual(c1_out, c2_out, weights_all, T_new)
+    # return T_new, residual, num_cones, c1_out, c2_out
     return T_new, residual, num_cones

@@ -9,7 +9,7 @@ from motlee.realign.wls import wls
 
 
 RECURSIVE_LEAST_SQUARES = False
-KF = False
+KF = True
 
 class FrameRealigner():
     
@@ -52,7 +52,7 @@ class FrameRealigner():
                 [0.0, 0.0, (3*np.pi/180)**2]
             ])
         elif KF:
-            ts = .1
+            ts = 1.0
             self.A = np.array([
                 [1., 0., 0., ts, 0., 0.],
                 [0., 1., 0., 0., ts, 0.],
@@ -62,7 +62,7 @@ class FrameRealigner():
                 [0., 0., 0., 0., 0., 1.]
             ], dtype=np.float64)
             self.H = np.eye(3, 6)
-            self.Q0 = 10000*np.array([
+            self.Q0 = .5*np.array([
                 [(ts**4)/4, 0.,         0.,         (ts**3)/2,  0.,         0.],
                 [0.,        (ts**4)/4,  0.,         0.,         (ts**3)/2,  0.],
                 [0.,        0.,         (5*np.pi/180)**2*(ts**4)/4,  0.,         0.,         (5*np.pi/180)**2*(ts**3)/2],
@@ -70,7 +70,7 @@ class FrameRealigner():
                 [0.,        (ts**3)/2,  0.,         0.,         ts**2,      0.],
                 [0.,        0.,         (5*np.pi/180)**2*(ts**3)/2,  0.,      0.,            (5*np.pi/180)**2*ts**2],
             ])
-            self.R = 0.01*np.array([
+            self.R = 0.05*np.array([
                 [1**2, 0.0, 0.0],
                 [0.0, 1**2, 0.0],
                 [0.0, 0.0, (5*np.pi/180)**2]

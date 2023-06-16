@@ -7,6 +7,7 @@
 from motlee.frontend.detections import get_rover_detections, get_cone_detections
 import numpy as np
 from numpy.linalg import inv, norm
+from scipy.spatial.transform import Rotation as Rot
 
 class PersonDetector():
 
@@ -37,11 +38,15 @@ class PersonDetector():
         boxes = []
         features = []
         Rs = []
+        T_WC = self.detections[cam_num][cam_type].T_WC(frame_time, T_BC=self.detections[cam_num][cam_type].T_BC, true_pose=False)
         for b, p in zip(self.detections[cam_num][cam_type].bbox(frame_time), self.detections[cam_num][cam_type].pos(frame_time)):
-            T_WC = self.detections[cam_num][cam_type].T_WC(frame_time, T_BC=self.detections[cam_num][cam_type].T_BC, true_pose=False)
+            theta = np.arctan2(p.item(1) - T_WC[1,3], p.item(0) - T_WC[0,3])
+            rot = Rot.from_euler('xyz', [0., 0., theta]).as_matrix()[:2,:2]
             dist = norm(p.reshape(-1)[:2] - T_WC[:2,3])
-            sigma_sq = .5 + (dist > 5) * .1*(dist - 5)
-            R = np.diag([sigma_sq, sigma_sq])
+            sigma_sq_depth = .5 + (dist > 5) * .1*(dist - 5)
+            sigma_sq_breadth = .5
+            R = np.diag([sigma_sq_depth, sigma_sq_breadth])
+            R = rot @ R @ rot.T
             Rs.append(R)
             positions.append(p.reshape(-1).tolist())
             boxes.append(b)
