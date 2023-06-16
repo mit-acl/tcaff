@@ -136,6 +136,8 @@ class MultiObjectTracker():
             else:
                 init_state = np.vstack([Zs[z_idx], np.zeros((self.track_params.A.shape[0] - Zs[z_idx].shape[0],1))])
             new_track = Track(self.camera_id, self.next_available_id, self.track_params, [Zs[z_idx]], init_state)
+            R_shape = Rs[z_idx].shape[0]
+            new_track.P[:R_shape,:R_shape] = Rs[z_idx]
             new_track.update([Zs[z_idx]], Rs[z_idx])
             self.new_tracks.append(new_track)
             self.next_available_id += 1

@@ -16,7 +16,7 @@ from motlee.utils.debug_help import *
 from motlee.utils.cam_utils import pt_is_seeable
 from motlee.config.track_params import TrackParams, ConeParams
 
-T_MAG_STATIC_OBJ_REALIGN_THRESH = 5
+T_MAG_STATIC_OBJ_REALIGN_THRESH = 2.5
 SKIP_RR01_IN_VIEW = False
 PROP_T_FOR_REALIGN_INIT_GUESS = False
 
