@@ -40,6 +40,7 @@ class FrameRealigner():
         self.tolerance_scale = 1
         self.realign_algorithm = params.realign_algorithm
         self.ALGORITHMS = params.RealignAlgorithm
+        ts = params.ts_realign
         if RECURSIVE_LEAST_SQUARES:
             self.Q0 = np.array([
                 [1**2, 0.0, 0.0],
@@ -52,7 +53,6 @@ class FrameRealigner():
                 [0.0, 0.0, (3*np.pi/180)**2]
             ])
         elif KF:
-            ts = 1.0
             self.A = np.array([
                 [1., 0., 0., ts, 0., 0.],
                 [0., 1., 0., 0., ts, 0.],

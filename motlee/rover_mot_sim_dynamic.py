@@ -91,7 +91,6 @@ if __name__ == '__main__':
         LAST_FRAME = 7650
         START_METRIC_FRAME = 15*30
         register_time = 20
-        REALIGN_PERIOD = 1
         
         # for dynamic plotting
         # FIRST_FRAME = 15*30
@@ -145,7 +144,7 @@ if __name__ == '__main__':
     last_printed_metrics = sim.frame_time
     for framenum in frame_range:
 
-        realign = args.realign and framenum >= START_METRIC_FRAME + (0*30) and (framenum - FIRST_FRAME) % (REALIGN_PERIOD*30) == 0
+        realign = args.realign and framenum >= START_METRIC_FRAME + (0*30) and (framenum - FIRST_FRAME) % (PARAMS.ts_realign*30) == 0
         if realign:
             print('REALIGN')
         # if framenum < START_METRIC_FRAME:

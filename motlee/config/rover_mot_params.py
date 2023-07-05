@@ -20,6 +20,7 @@ class RoverMOTParams():
         self.tolerance_growth_rate = 2.5
         self.realign_algorithm = RealignAlgorithm.REALIGN_CONTINUOUS
         self.RealignAlgorithm = RealignAlgorithm
+        self.ts_realign = 1.0
 
 class RealignAlgorithm(Enum):
     REALIGN_LS = 'least-squares-realignment'

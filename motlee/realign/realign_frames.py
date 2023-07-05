@@ -16,6 +16,7 @@ import clipperpy
 NUM_CONES_REQ = 8
 # DATA_ASSOCIATION_METHOD = 'icp'
 DATA_ASSOCIATION_METHOD = 'clipper'
+# DATA_ASSOCIATION_METHOD = 'clipper_mult_sol'
 ONLY_STRONG_CORRESPONDENCES = True
 ICP_MAX_DIST = 1.0
 CLIPPER_SIG = 0.35
@@ -100,7 +101,7 @@ def clipper_inlier_associations(Ain, pts1, pts2, weights1=None, weights2=None):
     assert (weights1 is None and weights2 is None) or \
         (weights1 is not None and weights2 is not None)
     if Ain.shape[0] == 0:
-        return np.array(), np.array()
+        return np.array([]), np.array([]), np.array([]), np.array([])
     print(pts1)
     print(Ain)
     pts1_corres = np.zeros((Ain.shape[0], pts1.shape[1]))
@@ -194,20 +195,25 @@ def realign_cones(cones1_input, cones2_input, T_current, has_ages=True):
             c2_out = np.delete(c2_out, to_delete, axis=0)
             weights_all = np.delete(weights_all, to_delete, axis=0)
         
-    elif DATA_ASSOCIATION_METHOD == 'clipper':
+    elif DATA_ASSOCIATION_METHOD == 'clipper' or \
+        DATA_ASSOCIATION_METHOD == 'clipper_mult_sol':
         cones1 = np.array([c.state.reshape(-1)[:2] for c in cones1_input])
         cones2 = np.array([c.state.reshape(-1)[:2] for c in cones2_input])
         ages1 = np.array([c.ell for c in cones1_input])
         ages2 = np.array([c.ell for c in cones2_input])
-        Ain = clipper_data_association(
-            cones1, cones2, sigma=CLIPPER_SIG, epsilon=CLIPPER_EPS)
-        print(cones1)
-        print(Ain)
+        if DATA_ASSOCIATION_METHOD == 'clipper':
+            Ain = clipper_data_association(
+                cones1, cones2, sigma=CLIPPER_SIG, epsilon=CLIPPER_EPS)
+        elif DATA_ASSOCIATION_METHOD == 'clipper_mult_sol':
+            Ains, scores = clipper_mult_sols(
+                cones1, cones2, sigma=CLIPPER_SIG, epsilon=CLIPPER_EPS)
+            opt_idx = np.argmax(scores)
+            Ain = Ains[opt_idx]
         c1_out, c2_out, ages1_out, ages2_out = \
             clipper_inlier_associations(Ain, cones1, cones2, ages1, ages2)
         weights_all = 1/(.01 + ages1_out * ages2_out)   
 
-    num_cones = len(c1_out) / (1 if DATA_ASSOCIATION_METHOD=='clipper' else 2)
+    num_cones = len(c1_out) / (1 if 'clipper' in DATA_ASSOCIATION_METHOD else 2)
     if num_cones < NUM_CONES_REQ:
         return T_current, None, None
 
@@ -217,3 +223,98 @@ def realign_cones(cones1_input, cones2_input, T_current, has_ages=True):
     residual = wls_residual(c1_out, c2_out, weights_all, T_new)
     # return T_new, residual, num_cones, c1_out, c2_out
     return T_new, residual, num_cones
+
+def realign_static_downweight(detections1, detections2, sigma=0.30, epsilon=0.40, downweight_nodes=None):
+    """
+    Parameters
+    ----------
+    detections1 : (n,3) np.array
+    detections2 : (m,3) np.array
+    downweight_associations : indices of (p_in,2) associations to downweight. First column
+        corresponds to detections1 indices and second corresponds to detections2
+    downweight  : float [0.0, 1.0] amount to multiply associations by
+
+    Return
+    ------
+    Ain   : (p_out,2) np.array (int) - inlier set. First column contains indices from detections1, 
+        second contains corresponding indices from detections2
+    score : float, u'Mu / (u'u)
+    """
+    iparams = clipperpy.invariants.EuclideanDistanceParams()
+    iparams.sigma = sigma
+    iparams.epsilon = epsilon
+    invariant = clipperpy.invariants.EuclideanDistance(iparams)
+
+    params = clipperpy.Params()
+    clipper = clipperpy.CLIPPER(invariant, params)
+
+    n = len(detections1)
+    m = len(detections2)
+    A = clipperpy.utils.create_all_to_all(n, m)
+
+    clipper.score_pairwise_consistency(detections1.T, detections2.T, A)
+    M_orig = clipper.get_affinity_matrix()
+    if downweight_nodes is not None:
+        M = M_orig.copy()
+        C = clipper.get_constraint_matrix()
+        for idx, downweight in downweight_nodes.items():
+            M[idx,:] *= downweight
+            M[:,idx] *= downweight
+            # M[0,0] = downweight
+        # M[0,0] = 1
+        # for i in range(M.shape[0]):
+        #     M[:,i] = 0
+        clipper = clipperpy.CLIPPER(invariant, params)
+        clipper.set_matrix_data(M=M, C=C)
+        # print(M)
+        # print(clipper.get_affinity_matrix())
+        # print(clipper.get_affinity_matrix())
+                
+    clipper.solve()
+    Ain = np.zeros((len(clipper.get_solution().nodes), 2)).astype(np.int64)
+    for i in range(len(clipper.get_solution().nodes)):
+        Ain[i,:] = A[clipper.get_solution().nodes[i],:]
+    # Ain = clipper2.get_selected_associations()
+    
+    u_sol = clipper.get_solution().u.copy()
+    for i in range(u_sol.shape[0]):
+        u_sol[i] = u_sol[i] if i in clipper.get_solution().nodes else 0.0
+    score = u_sol.T @ M_orig @ u_sol / (u_sol.T @ u_sol)
+    if len(clipper.get_solution().nodes) == 0:
+        score = 0
+    
+    return Ain, score, clipper.get_solution().nodes
+    
+def clipper_mult_sols(pts1, pts2, sigma=.3, epsilon=.4, downweight=.9, num_repeats=10):
+    """repeatedly reweights and reruns CLIPPER to search for close-to-optimal solutions
+
+    Args:
+        pts1 (numpy.array, shape(n,2 or 3)): First set of points for association
+        pts2 (numpy.array, shape(m,2 or 3)): Seconds set of points for association
+        downweight (float [0.0, 1.0), optional): Amount to downweight CLIPPER on each iteration. Defaults to .9.
+        num_repeats (int, optional): Number of iterations to rerun CLIPPER. Defaults to 10.
+
+    Returns:
+        num_repeats[(p_out,2) np.array (int)] : inlier set. First column contains indices from detections1, 
+        second contains corresponding indices from detections2
+        num_repeats list of scores
+    """
+    all_scores = []
+    all_pairs = []
+    
+    for i in range(num_repeats):
+        if i == 0:
+            pairs, score, nodes = realign_static_downweight(pts1, pts2, sigma=sigma, epsilon=epsilon)
+            downweight_nodes = {node: downweight for node in nodes}
+        else:
+            pairs, score, nodes = realign_static_downweight(pts1, pts2, sigma=sigma, epsilon=epsilon, downweight_nodes=downweight_nodes)
+            for node in nodes:
+                if node not in downweight_nodes:
+                    downweight_nodes[node] = 1.0
+                downweight_nodes[node] *= downweight
+        all_scores.append(score)
+        all_pairs.append(pairs)
+        # cones0_corres, cones1_corres = get_inlier_associations(pts1, pts2, pairs)
+
+    return all_pairs, all_scores
+        
