@@ -21,6 +21,7 @@ class RoverMOTParams():
         self.realign_algorithm = RealignAlgorithm.REALIGN_CONTINUOUS
         self.RealignAlgorithm = RealignAlgorithm
         self.ts_realign = 1.0
+        self.filter_frame_align = True
 
 class RealignAlgorithm(Enum):
     REALIGN_LS = 'least-squares-realignment'

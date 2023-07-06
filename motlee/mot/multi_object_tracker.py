@@ -6,7 +6,7 @@ from scipy.linalg import logm
 from copy import deepcopy
 
 from motlee.mot.track import Track
-from motlee.realign.frame_realigner import FrameRealigner, RECURSIVE_LEAST_SQUARES, KF
+from motlee.realign.frame_align_filter import FrameAlignFilter
 from motlee.utils.transform import transform
 
 NUM_CAMS = 4
@@ -15,12 +15,13 @@ USE_NLML = True
 
 class MultiObjectTracker():
 
-    def __init__(self, camera_id, connected_cams, params, track_params):
+    def __init__(self, camera_id, connected_cams, params, track_params, filter_frame_align=False, frame_align_ts=None):
         self.connected_cams = connected_cams
-        self.realigner = FrameRealigner(
+        self.realigner = FrameAlignFilter(
             cam_id=camera_id,
             connected_cams=connected_cams,
-            params=params 
+            filter_frame_align=filter_frame_align,
+            ts=frame_align_ts
         )
         self.Tau_init = params.Tau_LDA
         self.Tau_LDA = params.Tau_LDA
@@ -224,7 +225,7 @@ class MultiObjectTracker():
                     Sigma_fa[0, 0] = T_fa[0, 3]*(self.realigner.realigns_since_change[cam]+1) # for now, just the mag of x and y change
                     Sigma_fa[1, 1] = T_fa[1, 3]*(self.realigner.realigns_since_change[cam]+1) # for now, just the mag of x and y change
                     Sigma_fa[2, 2] = Rot.from_matrix(T_fa[:3,:3]).as_euler('xyz', degrees=False)[2] * (self.realigner.realigns_since_change[cam]+1) *.1 #* 8.1712
-                    if RECURSIVE_LEAST_SQUARES or KF:
+                    if self.realigner.filter_frame_align:
                         Sigma_fa = self.realigner.transform_covs[cam][:3, :3]
                     R = Jac_T @ (Sigma_fa) @ Jac_T.T + Jac_R @ R @ Jac_R.T
                     R = (R.T + R) / 2 # keep PD

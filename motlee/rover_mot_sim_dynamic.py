@@ -6,6 +6,7 @@ import cv2 as cv
 from tqdm import tqdm
 
 from metrics.metric_evaluator import MetricEvaluator, print_metric_results
+from realign.frame_aligner import FrameAligner, AssocMethod
 from config import rover_mot_params
 
 from frontend.rover_mot_frontend import RoverMotFrontend
@@ -110,6 +111,8 @@ if __name__ == '__main__':
     inst_metrics = True
     vicon_cones = False
     metric_d = args.metric_dist
+    
+    frame_aligner = FrameAligner(method=AssocMethod.ICP_STRONG_CORRES, num_objs_req=8, icp_max_dist=1.)
 
     rovers = [f'RR0{i}' for i in args.rovers]
     cam_types = ['t265', 'l515']
@@ -125,6 +128,7 @@ if __name__ == '__main__':
         noise=(0.0, 0.0),
         register_time=register_time,
         metric_d=metric_d,
+        frame_aligner=frame_aligner,
         vicon_cones=vicon_cones,
         viewer=args.viewer
     )

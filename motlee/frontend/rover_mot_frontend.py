@@ -10,7 +10,6 @@ from motlee.frontend.detections import GroundTruth
 from motlee.mot.multi_object_tracker import MultiObjectTracker
 from motlee.metrics.metric_evaluator import MetricEvaluator
 from motlee.metrics.inconsistency_counter import InconsistencyCounter
-from motlee.realign.realign_frames import realign_cones
 from motlee.utils.transform import transform, T_mag
 from motlee.utils.debug_help import *
 from motlee.utils.cam_utils import pt_is_seeable
@@ -22,7 +21,7 @@ PROP_T_FOR_REALIGN_INIT_GUESS = False
 
 class RoverMotFrontend():
     
-    def __init__(self, detection_dirs, ped_dir, rovers, use_noisy_odom, cam_types, vids, noise, mot_params, register_time, metric_d, vicon_cones=False, viewer=False):
+    def __init__(self, detection_dirs, ped_dir, rovers, use_noisy_odom, cam_types, vids, noise, mot_params, register_time, metric_d, frame_aligner, vicon_cones=False, viewer=False):
         self.viewer = viewer
         self.GT = GroundTruth(csv_dir=ped_dir)
         self.vids = vids
@@ -49,7 +48,8 @@ class RoverMotFrontend():
             self.cone_trackers.append(MultiObjectTracker(i, connected_cams=[], params=cone_tracker_params, track_params=ConeParams()))
         for i in range(2*self.num_rovers):
             connected_cams = [*range(2*self.num_rovers)]; connected_cams.remove(i)
-            self.mots.append(MultiObjectTracker(i, connected_cams=connected_cams, params=mot_params, track_params=TrackParams()))
+            self.mots.append(MultiObjectTracker(i, connected_cams=connected_cams, params=mot_params, track_params=TrackParams(), 
+                                                filter_frame_align=mot_params.filter_frame_align, frame_align_ts=mot_params.ts_realign))
             self.mes[0].append(MetricEvaluator(max_d=metric_d))
             self.full_mes.append(MetricEvaluator(max_d=metric_d))
         self.rover_names = rovers
@@ -59,6 +59,7 @@ class RoverMotFrontend():
 
         self.TRIGGER_AUTO_CYCLE_TIME = .2 # .1: .698158, .2: .695
         self.last_frame_time = 0
+        self.frame_aligner = frame_aligner
         
         self.topview_size = 600
         self.topview = np.ones((self.topview_size,self.topview_size,3))*255
@@ -90,16 +91,23 @@ class RoverMotFrontend():
                 for j, (mot2, cones2) in enumerate(zip(self.mots[self.num_rovers:], self.cone_trackers)):
                     if mot1 == mot2: continue
                     T_current = mot1.realigner.transforms[mot2.camera_id]
+                    objs1 = np.array([o.state.reshape(-1)[:2] for o in cones1.tracks])
+                    objs2 = np.array([o.state.reshape(-1)[:2] for o in cones2.tracks])
+                    ages1 = np.array([o.ell for o in cones1.tracks])
+                    ages2 = np.array([o.ell for o in cones2.tracks])
                     if PROP_T_FOR_REALIGN_INIT_GUESS:
                         T_guess = mot1.realigner.get_transform_p1(mot2.camera_id)
-                        T_new = realign_cones(cones1.tracks, cones2.tracks, T_guess)
+                        sol = self.frame_aligner.align_objects(objs1, objs2, ages1, ages2, T_guess)
                     else:
-                        T_new, residual, num_cones = realign_cones(cones1.tracks, cones2.tracks, T_current)
-                    if mot1.realigner.T_mag(T_new @ np.linalg.inv(T_current)) < T_MAG_STATIC_OBJ_REALIGN_THRESH: #and self.get_filtered_T_mag(T_new @ np.linalg.inv(T_current), 'psi') < 8:
-                        mot1.realigner.update_transform(mot2.camera_id, T_new, residual, num_cones)
-                        mot1.realigner.update_transform(j, T_new, residual, num_cones)
-                        self.mots[i].realigner.update_transform(mot2.camera_id, T_new, residual, num_cones)
-                        self.mots[i].realigner.update_transform(j, T_new, residual, num_cones)
+                        sol = self.frame_aligner.align_objects(objs1, objs2, ages1, ages2, T_current)
+                    if sol.success and mot1.realigner.T_mag(sol.transform @ np.linalg.inv(T_current)) > T_MAG_STATIC_OBJ_REALIGN_THRESH: 
+                        #and self.get_filtered_T_mag(T_new @ np.linalg.inv(T_current), 'psi') < 8:
+                        sol.success = False
+                    
+                    mot1.realigner.update_transform(mot2.camera_id, sol)
+                    mot1.realigner.update_transform(j, sol)
+                    self.mots[i].realigner.update_transform(mot2.camera_id, sol)
+                    self.mots[i].realigner.update_transform(j, sol)
  
         for i, cone_tracker in enumerate(self.cone_trackers):
             cones = self.detector.get_cones(i, 'l515', framenum, self.frame_time)
