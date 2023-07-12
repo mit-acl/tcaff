@@ -25,12 +25,14 @@ class FrameAlignSolution():
         success,
         transform = None,
         num_objs_associated = None,
-        transform_residual = None
+        transform_residual = None,
+        objective_score = None
     ):
         self.success = success
         self.transform = transform
         self.num_objs_associated = num_objs_associated
         self.transform_residual = transform_residual
+        self.objective_score = objective_score
 
 class FrameAligner():
     
@@ -120,13 +122,31 @@ class FrameAligner():
             objs2 = np.array([o[:2] for o in objs2.tolist()])
             if self.method == AssocMethod.CLIPPER:
                 Ain = self.clipper_data_association(objs1, objs2)
+                objs1_corres, objs2_corres, ages1_corres, ages2_corres = \
+                    self.clipper_inlier_associations(Ain, objs1, objs2, ages1, ages2)
+                weights_corres = 1/(.01 + ages1_corres * ages2_corres)
             elif self.method == AssocMethod.CLIPPER_MULT_SOL:
                 Ains, scores = self.clipper_mult_sols(objs1, objs2)
-                opt_idx = np.argmax(scores)
-                Ain = Ains[opt_idx]
-            objs1_corres, objs2_corres, ages1_corres, ages2_corres = \
-                self.clipper_inlier_associations(Ain, objs1, objs2, ages1, ages2)
-            weights_corres = 1/(.01 + ages1_corres * ages2_corres)   
+                objs1_corres, objs2_corres, weights_corres = [], [], []
+                for Ain in Ains:
+                    o1c, o2c, a1c, a2c = \
+                        self.clipper_inlier_associations(Ain, objs1, objs2, ages1, ages2)
+                    objs1_corres.append(o1c)
+                    objs2_corres.append(o2c)
+                    weights_corres.append(1/(.01 + a1c * a2c))
+                # opt_idx = np.argmax(scores)
+                # Ain = Ains[opt_idx]
+            
+        if not self.method == AssocMethod.CLIPPER_MULT_SOL:
+            return self.compose_solution(objs1_corres, objs2_corres, weights_corres)
+        else:
+            sols = []
+            for o1c, o2c, wc, score in zip(objs1_corres, objs2_corres, weights_corres, scores):
+                sols.append(self.compose_solution(o1c, o2c, wc))
+                sols[-1].objective_score = score
+            return sols
+        
+    def compose_solution(self, objs1_corres, objs2_corres, weights_corres):
 
         num_objs = len(objs1_corres)
         if num_objs < self.num_objs_req:
@@ -340,16 +360,16 @@ class FrameAligner():
         all_scores = []
         all_pairs = []
         
-        for i in range(self.cliper_mult_num_repeats):
+        for i in range(self.clipper_mult_repeats):
             if i == 0:
                 pairs, score, nodes = self.realign_static_downweight(pts1, pts2)
-                downweight_nodes = {node: self.cliper_mult_downweight for node in nodes}
+                downweight_nodes = {node: self.clipper_mult_downweight for node in nodes}
             else:
                 pairs, score, nodes = self.realign_static_downweight(pts1, pts2, downweight_nodes=downweight_nodes)
                 for node in nodes:
                     if node not in downweight_nodes:
                         downweight_nodes[node] = 1.0
-                    downweight_nodes[node] *= self.cliper_mult_downweight
+                    downweight_nodes[node] *= self.clipper_mult_downweight
             all_scores.append(score)
             all_pairs.append(pairs)
             # objs0_corres, objs1_corres = get_inlier_associations(pts1, pts2, pairs)
