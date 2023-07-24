@@ -9,9 +9,8 @@ import cv2 as cv
 import sys
 import argparse
 
-sys.path.append('../src')
-from utils.transform import transform
-from utils.cam_utils import is_viewable
+from motlee.utils.transform import transform
+from motlee.utils.cam_utils import is_viewable
 
 ############# OPTIONS #################
 parser = argparse.ArgumentParser()
@@ -47,10 +46,10 @@ num_rovers = args.num_rovers
 ROVERS = ['RR04', 'RR06', 'RR08'] if num_rovers == 3 else ['RR01', 'RR04', 'RR06', 'RR08']
 rover = args.rover
 
-datafile1 = f'/home/masonbp/ford-project/data/mot_metrics/dynamic-final/debug_files/{num_rovers}_rovers/cam_project_test_realign.json'
-datafile2 = f'/home/masonbp/ford-project/data/mot_metrics/dynamic-final/debug_files/{num_rovers}_rovers/cam_project_test_nofix.json'
+datafile1 = f'/home/masonbp/ford/data/mot_dynamic/dynamic_motlee_iros/results/iros/cam_project_test_nofix_{num_rovers}r.json'
+datafile2 = f'/home/masonbp/ford/data/mot_dynamic/dynamic_motlee_iros/results/iros/cam_project_test_realign_{num_rovers}r.json'
 video_out = args.output
-video_in = f'/home/masonbp/ford-project/data/dynamic-final/videos/l515/run1_{rover}.avi'
+video_in = f'/home/masonbp/ford/data/mot_dynamic/dynamic_motlee_iros/videos/l515/run1_{rover}.avi'
 
 fx = 901.47021484375
 fy = 901.8353881835938
@@ -69,19 +68,23 @@ class Viewer():
         # setup plotting
         plt.rcParams.update({'font.size': 5})
         # plt.rcParams.update({'wspace'})
-        self.fig, (self.axs) = plt.subplots(2, 2)
-        self.fig.set_dpi(240)
+        self.fig, (self.axs) = plt.subplots(2, 2, figsize=(16/2, 9/2))
+        self.fig.set_dpi(500)
+        
         # self.fig.subplots_adjust(wspace=0, hspace=0)
-        self.xlim = [-32/3, 32/3]
-        self.ylim = [-6., 6.]
-        self.marker_size = 5
-        self.rover_scale = 1.5
+        self.xlim = np.array([-32/3, 32/3])*1
+        self.ylim = np.array([-6., 6.])*1
+        self.marker_size = 6
+        self.rover_scale = 2.25
+        self.axs[0, 0].set_title("standard MOT in presence of localization error", fontname='Times New Roman', fontsize=10, fontweight='bold')
+        self.axs[0, 1].set_title("MOTLEE in presence of localization error", fontname='Times New Roman', fontsize=10, fontweight='bold')
 
-        self.axs[1,0].tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
-        self.axs[1,0].tick_params(axis='y', which='both', left=False, right=False, labelleft=False)
+        if 'fig1' in params:
+            pass
+        
         for i in range(2):
-            self.axs[0, i].set_xlabel('m')
-            self.axs[0, i].set_ylabel('m')
+            # self.axs[0, i].set_xlabel('m', labelpad=2)
+            # self.axs[0, i].set_ylabel('m', labelpad=2)
             self.axs[0, i].set_xlim(self.xlim)
             self.axs[0, i].set_ylim(self.ylim)
             self.axs[0, i].set_xticks([-5, 0, 5], minor=False)
@@ -89,6 +92,10 @@ class Viewer():
             self.axs[0, i].grid(True)
             self.axs[1, i].tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
             self.axs[1, i].tick_params(axis='y', which='both', left=False, right=False, labelleft=False)
+            self.axs[0, i].tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
+            self.axs[0, i].tick_params(axis='y', which='both', left=False, right=False, labelleft=False)
+            # self.axs[0, i].margins(x=0, y=0)
+            # self.axs[1, i].margins(x=0, y=0)
         self.fig.set_dpi(300)
 
 
@@ -161,7 +168,7 @@ class Viewer():
                 # else:
                 #     color='purple'
                 color='yellowgreen'
-                self.objs[i].append(self.axs[0, i].plot(gt[0], gt[1], 'o', markerSize=self.marker_size, color=color))
+                self.objs[i].append(self.axs[0, i].plot(gt[0], gt[1], 'o', markersize=self.marker_size, color=color))
 
             rover = df['rovers'][self.rover]
             T_WC = np.array(rover['T_WC']).reshape((4,4))
@@ -170,7 +177,7 @@ class Viewer():
 
                 track_corrected = transform(T_WC @ inv(T_WC_bel), np.array(track + [0]))
                 track_corrected[2] = 0
-                self.objs[i].append(self.axs[0, i].plot(track_corrected[0], track_corrected[1], 'x', markerSize=self.marker_size, color='blue'))
+                self.objs[i].append(self.axs[0, i].plot(track_corrected[0], track_corrected[1], 'x', markersize=self.marker_size, color='blue'))
 
                 track_c = transform(inv(T_WC), track_corrected)
                 if track_c.item(2) > 0:
@@ -199,8 +206,8 @@ class Viewer():
             self.fig.canvas.flush_events()
             
             self.axs[1, i].imshow(frame[...,::-1])
-
-        self.fig.subplots_adjust(wspace=0.2, hspace=0)
+            self.fig.subplots_adjust(wspace=0.0, hspace=0.1)
+            
         return
 
     def get_rover_artist(self, ax, grayed_out, main_rover):
@@ -300,12 +307,13 @@ class Viewer():
     def get_track_color(self, i):
         c = np.array(plt.get_cmap('tab10').colors[i])
         c = (c * 255).astype(int)
+        return tuple([255, 30, 30])
         return tuple(v.item() for v in c[::-1])
 
 
 viewer = Viewer([datafile1, datafile2], video_in, rover)
 start_frame = 125*30 #3750 #120*30
-viewer.fig.subplots_adjust(wspace=.3, hspace=.3)
+viewer.fig.subplots_adjust(wspace=0, hspace=0)
 if not args.num_frames:
     num_frames = (180-125) * fps
 else:

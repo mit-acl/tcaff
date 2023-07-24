@@ -1,3 +1,4 @@
+import numpy as np
 
 def parse_line(line, identifier, is_list=False):
     '''
@@ -34,6 +35,7 @@ class RoverOutputParser():
         self.metric_file = metric_file
         self.metrics = []
         self.multiple_vals = []
+        self.parsed = None
         
     def add_metric(self, metric, has_multiple_vals):
         '''
@@ -47,7 +49,7 @@ class RoverOutputParser():
         '''
         parses self.metric_file using added metrics
         '''
-        parsed = []
+        self.parsed = []
         with open(self.metric_file, 'r') as f:
             new_entry = [None for m in self.metrics]
             skip_line = False
@@ -65,11 +67,19 @@ class RoverOutputParser():
                                 raise(ex)
                         if None not in new_entry: 
                             if not skip_line:
-                                parsed.append(new_entry)
+                                self.parsed.append(new_entry)
                             skip_line = False                                
                             new_entry = [None for m in self.metrics]
         if format==dict:
-            for i in range(len(parsed)):
-                parsed[i] = {m: vals for m, vals in zip(self.metrics, parsed[i])}
-        return parsed
+            for i in range(len(self.parsed)):
+                self.parsed[i] = {m: vals for m, vals in zip(self.metrics, self.parsed[i])}
+        return self.parsed
+    
+    def get_array(self, metric):
+        if self.parsed is None:
+            return None
+        return np.array([entry[metric] for entry in self.parsed])
+    
+    def num_entries(self):
+        return len(self.parsed)
 
