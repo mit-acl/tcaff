@@ -10,7 +10,6 @@ class Track():
         self.A = np.copy(track_params.A)
         self.H = np.copy(track_params.H)
         self.Q = np.copy(track_params.Q)
-        self.R = np.copy(track_params.R)
         self.P = np.copy(track_params.P)
         self.shape_x = self.A.shape[0]
         self.shape_z = self.H.shape[0]
@@ -197,6 +196,15 @@ class Track():
             else:
                 detection_array = np.concatenate([detection_array, self.recent_detections[i]], axis=1)
         return detection_array
+    
+    def get_common_detections(self, cam_num):
+        if cam_num in self.recent_detections and self._id[0] in self.recent_detections:
+            dets_all = np.hstack([self.recent_detections[self._id[0]], self.recent_detections[cam_num]])
+            non_nan = ~np.isnan(dets_all).any(axis=1)  # Boolean mask of rows without NaN
+            dets_concurrent = dets_all[non_nan]
+            return dets_concurrent[:,:4], dets_concurrent[:,4:]
+        else:
+            return None, None
     
     def __str__(self):
         return f'{self._id}: {self._state.reshape(-1)[:2]}'
