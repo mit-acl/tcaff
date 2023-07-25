@@ -60,8 +60,8 @@ class Mapper():
         Mapper update
 
         Args:
-            zs (list of numpy arrays with shape(2 or 3, 1)): measurements
-            Rs (list of numpy arrays with shape(2 or 3, 2 or 3)): measurement covariances
+            zs (list of numpy arrays with shape(2 or 3, 1)): measurements in local or global frame
+            Rs (list of numpy arrays with shape(2 or 3, 2 or 3)): measurement covariances in local or global frame
         """
         self.mot.local_data_association(zs, np.arange(len(zs)), Rs)
         self.mot.dkf()
