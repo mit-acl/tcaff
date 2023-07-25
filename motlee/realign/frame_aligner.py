@@ -16,9 +16,13 @@ class AssocMethod(Enum):
     ICP = auto()
     ICP_STRONG_CORRES = auto()
     CLIPPER = auto()
-    CLIPPER_MULT_SOL = auto()\
+    CLIPPER_MULT_SOL = auto()
+    CLIPPER_SPARSE = auto()
         
 class FrameAlignSolution():
+    """
+    Simple struct-like class for holding information returned by a frame alignment attempt.
+    """
     
     def __init__(
         self,
@@ -33,8 +37,25 @@ class FrameAlignSolution():
         self.num_objs_associated = num_objs_associated
         self.transform_residual = transform_residual
         self.objective_score = objective_score
+        
+    def __str__(self):
+        if not self.success:
+            return "Success: false\nFrame align failed\n"
+        ret = f"Success: {self.success}\n"
+        if self.transform is not None:
+            ret += f"Transform: \n{np.round(self.transform, 3)}\n"
+        if self.num_objs_associated is not None:
+            ret += f"Num objects used: {self.num_objs_associated}\n"
+        if self.transform_residual is not None:
+            ret += f"Transform residual: {self.transform_residual}\n"
+        if self.objective_score is not None:
+            ret += f"Objective score: {self.objective_score}\n"
+        return ret
 
 class FrameAligner():
+    """
+    Class for aligning static object landmarks and dynamic object detections.
+    """
     
     def __init__(
         self,
@@ -44,18 +65,36 @@ class FrameAligner():
         clipper_sigma=None,
         clipper_epsilon=None,
         clipper_mult_downweight=None, 
-        clipper_mult_repeats=None
+        clipper_mult_repeats=None,
+        clipper_sparse_proportion=None,
+        clipper_sparse_max=None
     ):
+        """FrameAligner constructor
+
+        Args:
+            method (_type_): _description_
+            num_objs_req (int, optional): _description_. Defaults to 0.
+            icp_max_dist (_type_, optional): _description_. Defaults to None.
+            clipper_sigma (_type_, optional): _description_. Defaults to None.
+            clipper_epsilon (_type_, optional): _description_. Defaults to None.
+            clipper_mult_downweight (_type_, optional): _description_. Defaults to None.
+            clipper_mult_repeats (_type_, optional): _description_. Defaults to None.
+            
+        """
         if method == AssocMethod.ICP \
             or method == AssocMethod.ICP_STRONG_CORRES:
             assert icp_max_dist is not None, \
                 "icp_max_dist arg is required for ICP method"
         elif method == AssocMethod.CLIPPER or \
-            method == AssocMethod.CLIPPER_MULT_SOL:
+            method == AssocMethod.CLIPPER_MULT_SOL or \
+            method == AssocMethod.CLIPPER_SPARSE:
             assert clipper_epsilon is not None and clipper_epsilon is not None, \
                 "clipper params need to be set"
             if method == AssocMethod.CLIPPER_MULT_SOL:
                 assert clipper_mult_downweight is not None and clipper_mult_repeats is not None, \
+                    "clipper params need to be set"
+            elif method == AssocMethod.CLIPPER_SPARSE:
+                assert clipper_sparse_proportion is not None and clipper_sparse_max is not None, \
                     "clipper params need to be set"
     
         self.method = method       
@@ -65,8 +104,11 @@ class FrameAligner():
         self.max_dist = icp_max_dist
         self.clipper_mult_downweight = clipper_mult_downweight
         self.clipper_mult_repeats = clipper_mult_repeats
+        self.clipper_sparse_proportion = clipper_sparse_proportion
+        self.clipper_sparse_max = clipper_sparse_max
         
-    def align_objects(self, objs1, objs2, ages1=None, ages2=None, T_init_guess=None):
+    def align_objects(self, static_objects=None, static_ages=None, 
+                      dynamic_objects=None, dynamic_weights=None, T_init_guess=None):
         """performs alignment on objects by associating objects and then running Aruns with weights
         based on the age of the object.
 
@@ -87,8 +129,46 @@ class FrameAligner():
             float: residual of alignment
             int: number of corresponding objects used for alignment
         """
-        if objs1.shape[0] < self.num_objs_req or objs2.shape[0] < self.num_objs_req:
-            return FrameAlignSolution(success=False)
+        if static_objects is not None:
+            static_corres, static_weights, static_assoc_scores = self.associate_static_objects(static_objects, static_ages, T_init_guess)
+            solutions = []
+                
+            for i, (sc, sw, ss) in enumerate(zip(static_corres, static_weights, static_assoc_scores)):
+                if dynamic_objects is None:
+                    solutions.append(self.compose_solution(sc[0], sc[1], sw))
+                else:
+                    static_weight_sum = np.sum(sw)
+                    dynamic_weight_sum = np.sum(dynamic_weights)
+                    # sw /= static_weight_sum / sw.shape[0]
+                    # dynamic_weights /= dynamic_weight_sum / dynamic_weights.shape[0]
+                    sw /= static_weight_sum
+                    dynamic_weights /= dynamic_weight_sum
+                    dynamic_weights *= .05
+                    # print(f'number of dynamic: {dynamic_weights.shape}')
+                    weights_all = np.concatenate([sw.reshape(-1), dynamic_weights.reshape(-1)])
+                    # print(f"weights_all: {np.sum(weights_all)}")
+                    # print(f"dynamic_weights: {np.sum(dynamic_weights)}")
+                    # print(f"static_weights: {np.sum(sw)}")
+                    objs1_all = np.vstack([sc[0], dynamic_objects[0]])
+                    objs2_all = np.vstack([sc[1], dynamic_objects[1]])
+                    solutions.append(self.compose_solution(objs1_all, objs2_all, weights_all))
+                    solutions[-1].objective_score = ss
+        elif dynamic_objects is not None:
+            solutions = [self.compose_solution(dynamic_objects[0], dynamic_objects[1], dynamic_weights)]
+        else:
+            assert False, "no dynamic or static objects for alignment"
+            
+        if self.method == AssocMethod.CLIPPER_MULT_SOL:
+            return solutions
+        else:
+            assert len(solutions) == 1, solutions
+            return solutions[0]
+        
+    def associate_static_objects(self, static_objects, static_ages, T_init_guess):
+        objs1, objs2 = static_objects
+        ages1, ages2 = static_ages if static_ages is not None else (np.ones(objs1.shape[0]), np.ones(objs2.shape[0]))
+        if 0 in objs1.shape or 0 in objs2.shape:
+            return [[np.array([]), np.array([])]], [np.array([])], [None if not self.method != AssocMethod.CLIPPER_MULT_SOL else 0.]
         if self.method == AssocMethod.ICP or \
             self.method == AssocMethod.ICP_STRONG_CORRES:
             assert T_init_guess is not None, "initial guess is required for ICP registration method"
@@ -117,10 +197,12 @@ class FrameAligner():
             weights_corres = np.delete(weights_corres, to_delete, axis=0)
             
         elif self.method == AssocMethod.CLIPPER or \
-            self.method == AssocMethod.CLIPPER_MULT_SOL:
+            self.method == AssocMethod.CLIPPER_MULT_SOL or \
+            self.method == AssocMethod.CLIPPER_SPARSE:
             objs1 = np.array([o[:2] for o in objs1.tolist()])
             objs2 = np.array([o[:2] for o in objs2.tolist()])
-            if self.method == AssocMethod.CLIPPER:
+            if self.method == AssocMethod.CLIPPER or \
+                self.method == AssocMethod.CLIPPER_SPARSE:
                 Ain = self.clipper_data_association(objs1, objs2)
                 objs1_corres, objs2_corres, ages1_corres, ages2_corres = \
                     self.clipper_inlier_associations(Ain, objs1, objs2, ages1, ages2)
@@ -136,15 +218,11 @@ class FrameAligner():
                     weights_corres.append(1/(.01 + a1c * a2c))
                 # opt_idx = np.argmax(scores)
                 # Ain = Ains[opt_idx]
-            
-        if not self.method == AssocMethod.CLIPPER_MULT_SOL:
-            return self.compose_solution(objs1_corres, objs2_corres, weights_corres)
+        
+        if self.method == AssocMethod.CLIPPER_MULT_SOL:
+            return [(o1c, o2c) for o1c, o2c in zip(objs1_corres, objs2_corres)], weights_corres, scores
         else:
-            sols = []
-            for o1c, o2c, wc, score in zip(objs1_corres, objs2_corres, weights_corres, scores):
-                sols.append(self.compose_solution(o1c, o2c, wc))
-                sols[-1].objective_score = score
-            return sols
+            return [(objs1_corres, objs2_corres)], [weights_corres], [None]    
         
     def compose_solution(self, objs1_corres, objs2_corres, weights_corres):
 
@@ -214,6 +292,10 @@ class FrameAligner():
         n = len(detections1)
         m = len(detections2)
         A = clipperpy.utils.create_all_to_all(n, m)
+        
+        if self.method == AssocMethod.CLIPPER_SPARSE:
+            num_assoc = min(int(self.clipper_sparse_proportion * A.shape[0]), self.clipper_sparse_max)
+            A = A[np.random.choice(A.shape[0], num_assoc, replace=False)]
 
         clipper.score_pairwise_consistency(detections1.T, detections2.T, A)
         clipper.solve()
@@ -277,12 +359,8 @@ class FrameAligner():
         objs1_reordered = np.delete(objs1_reordered, no_correspond_idx, axis=0)
         ages2 = np.delete(ages2, no_correspond_idx, axis=0)
         ages1_reordered = np.delete(ages1_reordered, no_correspond_idx, axis=0)
-        
-        # if len(objs2_new) < NUM_objs_REQ:
-        # if len(objs2) < self.num_objs_req:
-        #     return None, None, None
             
-        # weights = 1/(.01 + ages2_new * ages1_new)
+        # weights = 1/(1 + ages2 * ages1_reordered)
         weights = 1/(.01 + ages2 * ages1_reordered)
         
         # return objs1_new, objs2_new, weights
