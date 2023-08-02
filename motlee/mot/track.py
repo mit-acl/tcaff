@@ -11,6 +11,7 @@ class Track():
         self.H = np.copy(track_params.H)
         self.Q = np.copy(track_params.Q)
         self.P = np.copy(track_params.P)
+        self.R = None
         self.shape_x = self.A.shape[0]
         self.shape_z = self.H.shape[0]
 

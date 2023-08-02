@@ -33,7 +33,7 @@ class PersonDetector():
         self.num_cams = len(cams)
         self.raw_cone_detections = [[], [], [], []]
 
-    def get_person_boxes(self, im, cam_num, cam_type, frame_time):
+    def get_person_boxes(self, cam_num, cam_type, frame_time):
         positions = []
         boxes = []
         features = []
@@ -44,13 +44,14 @@ class PersonDetector():
             rot = Rot.from_euler('xyz', [0., 0., theta]).as_matrix()[:2,:2]
             dist = norm(p.reshape(-1)[:2] - T_WC[:2,3])
             sigma_sq_depth = .5 + (dist > 5) * .1*(dist - 5)
-            sigma_sq_breadth = .5
+            sigma_sq_breadth = .25
             R = np.diag([sigma_sq_depth, sigma_sq_breadth])
+            # R *= .5
             R = rot @ R @ rot.T
             Rs.append(R)
             positions.append(p.reshape(-1).tolist())
             boxes.append(b)
-            features.append(self._get_box_features(b, im, cam_type))
+            features.append(self._get_box_features(b, None, cam_type))
             
         return positions, boxes, features, Rs
     

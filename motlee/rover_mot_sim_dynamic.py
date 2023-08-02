@@ -209,6 +209,12 @@ if __name__ == '__main__':
     print('final ', end='')
     print_metric_results(sim.full_mes, sim.inconsistencies, sim.mots, mota_only=False)
 
+    for op_str, op in zip(['average', 'max', 'std_dev'], [np.mean, np.max, np.std]):
+        if args.realign:
+            print(f"{op_str} time (frame align): {op(sim.timing['fa'])}")
+        print(f"{op_str} time (tracking): {op(sim.timing['tracking'])}")
+        print(f"{op_str} time (mapping): {op(sim.timing['mapping'])}")
+
     if args.json_file is not None:
         with open(args.json_file, 'w') as f:
             import json
