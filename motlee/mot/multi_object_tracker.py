@@ -446,6 +446,19 @@ class MultiObjectTracker():
                 self.tracks.remove(track)
                 self.old_tracks.append(track)
                 track.died()
+                
+    def get_common_detections(self, cam_num):
+        dets_local = []
+        dets_other = []
+        for track in self.tracks:
+            dl, do = track.get_common_detections(cam_num)
+            if dl is not None and do is not None:
+                dets_local.append(dl)
+                dets_other.append(do)
+        assert len(dets_local) == len(dets_other)
+        if len(dets_local) == 0:
+            return None, None
+        return np.vstack(dets_local), np.vstack(dets_other)
             
     def __str__(self):
         return_str = ''
