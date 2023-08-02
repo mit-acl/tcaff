@@ -12,30 +12,57 @@ from motlee.utils.transform import transform
 NUM_CAMS = 4
 COV_MAG = .01
 USE_NLML = True
+MERGE_RANGE_M = .15
 
 class MultiObjectTracker():
 
-    def __init__(self, camera_id, connected_cams, params, track_params, filter_frame_align=False, frame_align_ts=None):
-        self.connected_cams = connected_cams
-        self.realigner = FrameAlignFilter(
-            cam_id=camera_id,
-            connected_cams=connected_cams,
-            filter_frame_align=filter_frame_align,
-            ts=frame_align_ts
-        )
-        self.Tau_init = params.Tau_LDA
-        self.Tau_LDA = params.Tau_LDA
-        self.Tau_GDA = params.Tau_GDA
-        self.Tau_grown = 1
+    def __init__(
+        self, 
+        camera_id, 
+        connected_cams,
+        track_motion_model,
+        tau_local=2.0,
+        tau_global=1.0,
+        alpha=2000,
+        kappa=10,
+        nu=3,
+        track_storage_size=1
+    ):
         
-        self.alpha = params.alpha
-        self.kappa = params.kappa
+        """_summary_
+
+        Args:
+            camera_id (int): unique identifier for tracking agent
+            connected_cams ((int) list): list of neighboring agent ids
+            track_motion_model (MotionModel): MotionModel object containing matrices that govern 
+                the motion of tracks
+            tau_local (float, optional): Mahalanobis distance gate for local data association. 
+                Defaults to 2.0.
+            tau_global (float, optional): Mahalanobis distance gate for global data association. 
+                Defaults to 1.0.
+            alpha (int, optional): not used right now. Defaults to 2000.
+            kappa (int, optional): number of consecutive timesteps without any new measurements 
+                before a track is deleted. Defaults to 10.
+            nu (int, optional): number of consecutive timesteps with measurements required before 
+                a track is created. Defaults to 3.
+            track_storage_size (int, optional): number of recent detections to keep stored for use 
+                in frame alignment. Defaults to 1.
+        """
+        
+        self.connected_cams = connected_cams
+        self.track_motion_model = track_motion_model
+        self.Tau_LDA = tau_local
+        self.Tau_GDA = tau_global
+        self.alpha = alpha
+        self.kappa = kappa
+        self.track_storage_size = track_storage_size
+        
         self.tracks = []
         self.new_tracks = []
         self.old_tracks = []
         self.next_available_id = 0
-        self.n_meas_to_init_track = params.n_meas_to_init_track
-        self.merge_range_m = params.merge_range_m
+        self.n_meas_to_init_track = nu
+        self.merge_range_m = MERGE_RANGE_M
         
         self.camera_id = camera_id
         self.track_mapping = dict()
@@ -49,9 +76,9 @@ class MultiObjectTracker():
             
         self.pose = None
         self.neighbor_poses = {c: None for c in self.connected_cams}
+        self.neighbor_frame_align = {c: None for c in self.connected_cams}
+        self.neighbor_frame_align_cov = {c: None for c in self.connected_cams}
         self.MDs = []
-        self.track_params = track_params
-        
 
     def local_data_association(self, Zs, feature_vecs, Rs):
         self.MDs = []
@@ -133,11 +160,18 @@ class MultiObjectTracker():
 
         for z_idx in unassociated:
             # zero velocity initial state
-            if self.track_params.A.shape[0] == Zs[z_idx].shape[0]:
+            if self.track_motion_model.A.shape[0] == Zs[z_idx].shape[0]:
                 init_state = Zs[z_idx]
             else:
-                init_state = np.vstack([Zs[z_idx], np.zeros((self.track_params.A.shape[0] - Zs[z_idx].shape[0],1))])
-            new_track = Track(self.camera_id, self.next_available_id, self.track_params, [Zs[z_idx]], init_state)
+                init_state = np.vstack([Zs[z_idx], np.zeros((self.track_motion_model.A.shape[0] - Zs[z_idx].shape[0],1))])
+            new_track = Track(
+                camera_id=self.camera_id, 
+                track_id=self.next_available_id, 
+                init_measurements=[Zs[z_idx]], 
+                init_state=init_state, 
+                motion_model=self.track_motion_model, 
+                storage_size=self.track_storage_size
+            )
             R_shape = Rs[z_idx].shape[0]
             new_track.P[:R_shape,:R_shape] = Rs[z_idx]
             new_track.update([Zs[z_idx]], Rs[z_idx])
@@ -202,32 +236,22 @@ class MultiObjectTracker():
         for track in self.tracks:   
             track_obs = track.get_measurement_info(track.R)
             for cam in self.connected_cams:
-                T_fa = inv(self.realigner.transforms[cam] @ inv(self.realigner.T_last[cam]))
-
                 R = np.copy(track.R)
                 if track_obs.zs is not None:
                     # This needs to be fixed so that it is correct when being sent to other camera (rather than
                     # being written for being received)
-                    # z_b = transform(inv(self.pose), track_obs.zs[0].reshape(-1)[:2])
-                    # z = z_b
                     z = track_obs.zs[0].reshape(-1)[:2]
                     Jac_T = np.array([
                         [1.0, 0.0, -(z.item(1) - self.neighbor_poses[cam][1,3])], # should be expressed in body frame, not world frame
                         [0.0, 1.0, (z.item(0) - self.neighbor_poses[cam][0,3])], # 
                     ])
-                    Jac_R = inv(self.realigner.transforms[cam])[:2,:2].T
-                    Sigma_fa = np.zeros((3,3))
-                    Sigma_fa[0, 0] = np.abs(T_fa[0, 3]*(self.realigner.realigns_since_change[cam]+1)) # for now, just the mag of x and y change
-                    Sigma_fa[1, 1] = np.abs(T_fa[1, 3]*(self.realigner.realigns_since_change[cam]+1)) # for now, just the mag of x and y change
-                    Sigma_fa[2, 2] = np.abs(Rot.from_matrix(T_fa[:3,:3]).as_euler('xyz', degrees=False)[2] * (self.realigner.realigns_since_change[cam]+1)) *.1 #* 8.1712
-                    Sigma_fa *= 20
-                    if self.realigner.filter_frame_align:
-                        Sigma_fa = self.realigner.transform_covs[cam][:3, :3]
+                    Jac_R = inv(self.neighbor_frame_align[cam])[:2,:2].T
+                    Sigma_fa = self.neighbor_frame_align_cov[cam][:3, :3]
                     # R = Jac_T @ (Sigma_fa) @ Jac_T.T + Jac_R @ R @ Jac_R.T
                     R = Jac_R @ (Jac_T @ (Sigma_fa) @ Jac_T.T + R) @ Jac_R.T
                     R = (R.T + R) / 2 # keep PD
-                if cam in self.realigner.transforms:
-                    T = inv(self.realigner.transforms[cam])
+                if cam in self.neighbor_frame_align:
+                    T = inv(self.neighbor_frame_align[cam])
                 else:
                     T = np.eye(4)
                 obs = track.get_measurement_info(R, T=T) # TODO: figure out R
@@ -300,10 +324,10 @@ class MultiObjectTracker():
         else: # raw detections
             return self.recent_detection_list
         
-    def frame_realign(self):
-        self.realigner.realign(self.tracks + self.old_tracks)
-        self.realigner.rectify_detections(self.tracks + self.old_tracks)
-        self.Tau_LDA = self.realigner.tolerance_scale * self.Tau_init
+    # def frame_realign(self):
+    #     self.realigner.realign(self.tracks + self.old_tracks)
+    #     self.realigner.rectify_detections(self.tracks + self.old_tracks)
+    #     self.Tau_LDA = self.realigner.tolerance_scale * self.Tau_init
 
     def _get_track_groups(self, similarity_scores):
         # TODO: Maximum clique kind of thing going on here...
@@ -419,7 +443,7 @@ class MultiObjectTracker():
             if local_track_id == None:
                 mean_xbar /= group_size
                 local_track_id = (self.camera_id, self.next_available_id)
-                new_track = Track(self.camera_id, self.next_available_id, self.track_params, [mean_xbar[0:4,:]], mean_xbar)                
+                new_track = Track(self.camera_id, self.next_available_id, [mean_xbar[0:4,:]], mean_xbar, self.track_motion_model, self.track_storage_size)                
                 self.tracks.append(new_track)
                 self.next_available_id += 1
                 group_by_id.append(local_track_id)
@@ -435,7 +459,7 @@ class MultiObjectTracker():
     def manage_deletions(self):
         for track in self.old_tracks:
             track.cycle()
-            if track.dead_cnt > self.track_params.n_dets:
+            if track.dead_cnt > self.track_storage_size:
                 self.old_tracks.remove(track)
         for track in self.tracks + self.new_tracks:
             track.cycle()
