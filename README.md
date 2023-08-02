@@ -18,6 +18,12 @@ cd <this rep>
 pip install .
 ```
 
+Note: to install open3d 0.17.0, you may need to run:
+
+```
+pip install --upgrade pip
+```
+
 # Examples
 
 A growing number of examples for using `motlee` can be found in the [examples directory](./examples/).
