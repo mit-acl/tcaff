@@ -48,6 +48,7 @@ class MultiObjectTracker():
             self.recent_detection_list.append(None)
             
         self.pose = None
+        self.neighbor_poses = {c: None for c in self.connected_cams}
         self.MDs = []
         self.track_params = track_params
         
@@ -208,26 +209,22 @@ class MultiObjectTracker():
                     # This needs to be fixed so that it is correct when being sent to other camera (rather than
                     # being written for being received)
                     # z_b = transform(inv(self.pose), track_obs.zs[0].reshape(-1)[:2])
+                    # z = z_b
                     z = track_obs.zs[0].reshape(-1)[:2]
                     Jac_T = np.array([
-                        [1.0, 0.0, -z.item(1)], # should be expressed in body frame, not world frame
-                        [0.0, 1.0, z.item(0)], # 
+                        [1.0, 0.0, -(z.item(1) - self.neighbor_poses[cam][1,3])], # should be expressed in body frame, not world frame
+                        [0.0, 1.0, (z.item(0) - self.neighbor_poses[cam][0,3])], # 
                     ])
-                    # th_fa = Rot.from_matrix(T_fa[:3,:3]).as_euler('xyz', degrees=False)[2]
-                    # Jac_T = np.array([
-                    #     [1.0, 0.0, -obs.z.item(0)*np.sin(th_fa) - y],
-                    #     [0.0, 1.0, obs.z.item(0)],
-                    #     [0.0, 0.0, 0.0],
-                    #     [0.0, 0.0, 0.0]
-                    # ])
-                    Jac_R = self.realigner.transforms[cam][:2,:2].T
+                    Jac_R = inv(self.realigner.transforms[cam])[:2,:2].T
                     Sigma_fa = np.zeros((3,3))
-                    Sigma_fa[0, 0] = T_fa[0, 3]*(self.realigner.realigns_since_change[cam]+1) # for now, just the mag of x and y change
-                    Sigma_fa[1, 1] = T_fa[1, 3]*(self.realigner.realigns_since_change[cam]+1) # for now, just the mag of x and y change
-                    Sigma_fa[2, 2] = Rot.from_matrix(T_fa[:3,:3]).as_euler('xyz', degrees=False)[2] * (self.realigner.realigns_since_change[cam]+1) *.1 #* 8.1712
+                    Sigma_fa[0, 0] = np.abs(T_fa[0, 3]*(self.realigner.realigns_since_change[cam]+1)) # for now, just the mag of x and y change
+                    Sigma_fa[1, 1] = np.abs(T_fa[1, 3]*(self.realigner.realigns_since_change[cam]+1)) # for now, just the mag of x and y change
+                    Sigma_fa[2, 2] = np.abs(Rot.from_matrix(T_fa[:3,:3]).as_euler('xyz', degrees=False)[2] * (self.realigner.realigns_since_change[cam]+1)) *.1 #* 8.1712
+                    Sigma_fa *= 20
                     if self.realigner.filter_frame_align:
                         Sigma_fa = self.realigner.transform_covs[cam][:3, :3]
-                    R = Jac_T @ (Sigma_fa) @ Jac_T.T + Jac_R @ R @ Jac_R.T
+                    # R = Jac_T @ (Sigma_fa) @ Jac_T.T + Jac_R @ R @ Jac_R.T
+                    R = Jac_R @ (Jac_T @ (Sigma_fa) @ Jac_T.T + R) @ Jac_R.T
                     R = (R.T + R) / 2 # keep PD
                 if cam in self.realigner.transforms:
                     T = inv(self.realigner.transforms[cam])
