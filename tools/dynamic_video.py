@@ -12,11 +12,13 @@ import argparse
 from motlee.utils.transform import transform
 from motlee.utils.cam_utils import is_viewable
 
+plt.style.use('/home/masonbp/computer/python/matplotlib/publication.mplstyle')
+
 ############# OPTIONS #################
 parser = argparse.ArgumentParser()
 parser.add_argument('-o', '--output',
                     type=str,
-                    default='../figs/vid.mp4',
+                    default=None,
                     help='file to save video to.')
 parser.add_argument('-f', '--fps',
                     default=1,
@@ -40,6 +42,7 @@ parser.add_argument('--num-frames',
                     type=int,
                     default=None,
                     help='Number of frames to include in video')
+parser.add_argument('--fig1', action='store_true')
 args = parser.parse_args()
 fps = args.fps
 num_rovers = args.num_rovers
@@ -68,19 +71,18 @@ class Viewer():
         # setup plotting
         plt.rcParams.update({'font.size': 5})
         # plt.rcParams.update({'wspace'})
-        self.fig, (self.axs) = plt.subplots(2, 2, figsize=(16/2, 9/2))
-        self.fig.set_dpi(500)
+        # width = 3.487
+        width = 8
+        self.fig, (self.axs) = plt.subplots(2, 2, figsize=(width, width*10/16))
         
         # self.fig.subplots_adjust(wspace=0, hspace=0)
         self.xlim = np.array([-32/3, 32/3])*1
         self.ylim = np.array([-6., 6.])*1
         self.marker_size = 6
         self.rover_scale = 2.25
-        self.axs[0, 0].set_title("standard MOT in presence of localization error", fontname='Times New Roman', fontsize=10, fontweight='bold')
-        self.axs[0, 1].set_title("MOTLEE in presence of localization error", fontname='Times New Roman', fontsize=10, fontweight='bold')
-
-        if 'fig1' in params:
-            pass
+        title_fontsize=13
+        self.axs[0, 0].set_title("standard MOT in presence of localization error", fontname='Times New Roman', fontsize=title_fontsize, fontweight='bold')
+        self.axs[0, 1].set_title("MOTLEE in presence of localization error", fontname='Times New Roman', fontsize=title_fontsize, fontweight='bold')
         
         for i in range(2):
             # self.axs[0, i].set_xlabel('m', labelpad=2)
@@ -206,7 +208,13 @@ class Viewer():
             self.fig.canvas.flush_events()
             
             self.axs[1, i].imshow(frame[...,::-1])
-            self.fig.subplots_adjust(wspace=0.0, hspace=0.1)
+            self.fig.subplots_adjust(
+                top=0.95,
+                bottom=0.01,
+                left=0.01,
+                right=0.99,
+                wspace=0.05, 
+                hspace=0.05)
             
         return
 
@@ -248,7 +256,7 @@ class Viewer():
 
         # camera FOV frustrum
         near = 0.1 * s
-        far = 1 * s
+        far = .7 * s
         top = near * np.tan(self.fov / 2.)
         bottom = -top
         right = self.aspect * top
@@ -328,4 +336,19 @@ if not args.single_frame:
     plt.close()
 else:
     viewer.view(args.single_frame)
-    plt.show()
+    if args.fig1:
+        annoation_fontsize=12
+        arrow_kw = {'head_width': .3, 'fc': 'k'}
+        viewer.axs[0, 0].text(-9, 2, "   false \npositive", fontsize=annoation_fontsize)
+        viewer.axs[0, 0].arrow(-7, 1.5, .4, -1.7, **arrow_kw)
+        viewer.axs[0, 0].text(-5.5, -4.8, "perceived robot pose, due to drift", fontsize=annoation_fontsize)#, backgroundcolor='white')
+        viewer.axs[0, 0].arrow(-5.7, -4.4, -.7, .45, **arrow_kw)
+        viewer.axs[0, 0].text(-1.5, 4.4, "ground truth pose", fontsize=annoation_fontsize)#, backgroundcolor='white')
+        viewer.axs[0, 0].arrow(1.3, 4.2, -1.1, -.65, **arrow_kw)
+        viewer.axs[0, 0].arrow(1.7, 4.2, -1.4, -4.3, **arrow_kw)
+        viewer.axs[0, 0].text(7, .8, "track", fontsize=annoation_fontsize)#, backgroundcolor='white')
+        viewer.axs[0, 0].arrow(6.8, .8, -1.4, -1.0, **arrow_kw)
+    if args.output is None:
+        plt.show()
+    else:
+        plt.savefig(args.output)

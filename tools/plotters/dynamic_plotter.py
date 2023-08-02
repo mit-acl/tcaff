@@ -94,13 +94,14 @@ parser.add_argument('--output', '-o', default=None, type=str)
 parser.add_argument('--legend', '-l', type=str, default=None,
                     help='legend formatted as python list')
 parser.add_argument('--dpi', type=int, default=240)
+parser.add_argument('--publish', '-p', action='store_true')
 args = parser.parse_args()
 
 if not args.metric_file:
-    args.metric_file = ['/home/masonbp/ford-project/data/mot_metrics/dynamic-final/3_rovers/vicon.yaml', 
-                '/home/masonbp/ford-project/data/mot_metrics/dynamic-final/3_rovers/no_fix.yaml',
-                '/home/masonbp/ford-project/data/mot_metrics/dynamic-final/3_rovers/wls_22_1s.yaml',
-                '/home/masonbp/ford-project/data/mot_metrics/dynamic-final/3_rovers/smart_R_2_1_Rfagain.yaml']
+    args.metric_file = ['/home/masonbp/ford/data/mot_dynamic/dynamic_motlee_iros/results/iros/mobile0_vicon.yaml', 
+                '/home/masonbp/ford/data/mot_dynamic/dynamic_motlee_iros/results/iros/mobile1_casao.yaml',
+                '/home/masonbp/ford/data/mot_dynamic/dynamic_motlee_iros/results/iros/mobile2_motlee_no_uncertainty.yaml',
+                '/home/masonbp/ford/data/mot_dynamic/dynamic_motlee_iros/results/iros/mobile3_motlee_uncertainty.yaml']
 metric = args.metric
 if args.num_lines is None:
     num_lines = len(args.metric_file)
@@ -110,6 +111,11 @@ if args.legend is None:
     legend = [f'run {i}' for i in range(num_lines)]
 else:
     legend = [element.strip() for element in args.legend.strip().split('[')[1].split(']')[0].split(',')]
+    
+plt.style.use('/home/masonbp/computer/python/matplotlib/publication.mplstyle')
+if args.publish:
+    legend = ["Perfect localization", "Casao", "MOTLEE, no frame alignment uncertainty", "MOTLEE, frame alignment uncertainty"]
+    
 
 
 ############################################
@@ -130,21 +136,24 @@ for metric_file in args.metric_file[:num_lines]:
 ############## Plotting  ###################
 ############################################
 
-colors = ['tab:green', 'tab:red', 'navy', 'tab:orange']
-# linestyles = [(0, (1,1)), 'dashed', 'dashdot', 'solid']
-linestyles = ['solid', 'solid', 'solid', 'solid']
+colors = ['goldenrod', 'navy', '#FA86C4', 'green']
+line_kwargs = {'linestyle': '-', 'linewidth': 1.25}
 
 if not args.metric_only:
-    f, (ax) = plt.subplots(3, 1, sharex=True, figsize=[8, 4.8])
+    width = 3.487
+    height = width * 1.
+    f, (ax) = plt.subplots(3, 1, sharex=True, figsize=(width, height))
 
     # top plot MOTA
     ts = list()
     for i, s in enumerate(score_list):
         t = [*range(s.shape[0])]
         t = np.array(t) * args.sample_len
-        ax[0].plot(t, s[:, 0], color=colors[i], linestyle=linestyles[i])
+        ax[0].plot(t, s[:, 0], color=colors[i], **line_kwargs)
     ax[0].set_ylabel('MOTA')
     ax[0].set_ylim([0, 1])
+    ax[0].set_yticks([0., .2, .4, .6, .8, 1.], minor=False)
+    
 
     minor_ticks = np.arange(0, t[-1], 5)
 
@@ -152,15 +161,13 @@ if not args.metric_only:
     for i, s in enumerate(score_list):
         t = [*range(s.shape[0])]
         t = np.array(t) * args.sample_len
-        ax[1].plot(t, s[:, 2], color=colors[i], linestyle=linestyles[i])
-        ax[2].plot(t, s[:, 3], color=colors[i], linestyle=linestyles[i])
-    ax[1].set_ylabel('Heading error (deg)')
+        ax[1].plot(t, s[:, 2], color=colors[i],  **line_kwargs)
+        ax[2].plot(t, s[:, 3], color=colors[i],  **line_kwargs)
+    ax[1].set_ylabel('Heading Error (deg)')
     ax[1].grid(True)
-    ax[2].set_ylabel('Translation error (m)')
+    ax[2].set_ylabel('Translation Error (m)')
     ax[2].set_xlabel('Time (s)')
-    # ax[1].legend(['Perfect localization', 'Casao', 'MOTLEE (realignment)', 'MOTLEE (realignment +\n uncertainty incorporation)'], loc=(0.01,0.3))
-    ax[1].legend(legend, loc=(0.01,0.3))
-
+    
     ax[1].set_ylim([-.9, 17])
     ax[2].set_ylim([-.15, 3.1])
 
@@ -175,12 +182,12 @@ else:
         t = [*range(len(s))]
         t = np.array(t) * args.sample_len
         if not args.metric_is_list:
-            ax.plot(t, s[:, 0], color=colors[i], linestyle=linestyles[i])
+            ax.plot(t, s[:, 0], color=colors[i],  **line_kwargs)
         elif args.metric_plot_avg:
             avgs = []
             for j, step in enumerate(s):
                 avgs.append(np.mean(step[0]))
-            ax.plot(t, smooth(avgs, 0.9), color=colors[i], linestyle=linestyles[i])
+            ax.plot(t, smooth(avgs, 0.9), color=colors[i],  **line_kwargs)
         else:
             for j, step in enumerate(s):
                 data_pts = step[0]
@@ -191,13 +198,17 @@ else:
     if metric == 'mota':
         ax.set_ylim([0, 1])
 
-
-
 f.set_dpi(args.dpi)
+ax[0].legend(legend, loc='upper left', ncols=2, bbox_to_anchor=(0.0,1.4), frameon=False)
+
+if args.publish:
+    f.subplots_adjust(
+                top=0.91,
+                bottom=0.1,
+                left=0.11,
+                right=0.98)
 
 if args.output is not None:
-    f.set_dpi(1000)
-    with open(args.output, 'w') as fh:
-        plt.savefig(args.output, format='png')
+    plt.savefig(args.output)
 else:
     plt.show()
