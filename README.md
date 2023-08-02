@@ -1,3 +1,5 @@
+![motlee](./media/banner.png)
+
 ## MOTLEE: <ins>M</ins>ulti-<ins>O</ins>bject <ins>T</ins>racking with <ins>L</ins>ocalization <ins>E</ins>rror <ins>E</ins>limination
 
 MOTLEE is an algorithm used for performing collaborative multi-object tracking (MOT) in read-world environments (i.e. in the presence of imperfect localization). 
