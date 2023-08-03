@@ -17,8 +17,8 @@ class MotionModel():
             R ((p,p) np.array): measurement noise covariance
             P0 ((n,n) np.array): initial estimate covariance
         """
-        self.A = A.copy()
-        self.H = H.copy()
-        self.Q = Q.copy()
-        self.R = R.copy()
-        self.P0 = P0.copy()
+        self.A = np.array(A).copy()
+        self.H = np.array(H).copy()
+        self.Q = np.array(Q).copy()
+        self.R = np.array(R).copy()
+        self.P0 = np.array(P0).copy()
