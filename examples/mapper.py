@@ -14,7 +14,7 @@ class StaticObjParams():
             [0, 1],
         ], dtype=np.float64)
         self.H = np.eye(2)
-        self.Q = .25*np.eye(2)
+        self.Q = .8*np.eye(2) #.25*np.eye(2)
         self.P = .25*np.eye(2)
 
         self.n_dets = 1 # how many recent detections to store in bank (not needed for mapping)
