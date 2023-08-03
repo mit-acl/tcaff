@@ -93,7 +93,7 @@ def dump_everything_in_the_whole_world(frametime, framenum, rovers, mots, detect
         r_dict['T_WC_bel'] = det.T_WC(frametime, T_BC=det.T_BC, true_pose=False).reshape(-1).tolist()
         r_dict['tracks'] = m.get_tracks(format='list')
         r_dict['T_fix'] = dict()
-        for r_id, T in m.realigner.transforms.items():
+        for r_id, T in m.neighbor_frame_align.items():
             r_dict['T_fix'][r_id] = T.reshape(-1).tolist()
         d['rovers'][r] = r_dict
     return d
@@ -138,3 +138,18 @@ def calc_Tfix(det1, det2, frame_time):
     T_WC2_bel = det2.T_WC(frame_time, T_BC=det2.T_BC, true_pose=False)
     
     return inv(T_WC1_true @ inv(T_WC1_bel)) @ T_WC2_true @ inv(T_WC2_bel)
+
+def dump_local_association(frametime, framenum, rovers, mots, detections, gt_list):
+    d = dict()
+    d['frametime'] = frametime
+    d['framenum'] = framenum
+    d['rovers'] = dict()
+    d['groundtruth'] = gt_list
+    
+    for r, m, det in zip(rovers, mots, detections):
+        r_dict = dict()
+        r_dict['T_WC'] = det.T_WC(frametime, T_BC=det.T_BC, true_pose=True).reshape(-1).tolist()
+        r_dict['T_WC_bel'] = det.T_WC(frametime, T_BC=det.T_BC, true_pose=False).reshape(-1).tolist()
+        r_dict['local_da'] = m.track_debug_info
+        d['rovers'][r] = r_dict
+    return d

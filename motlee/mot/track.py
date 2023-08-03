@@ -6,11 +6,12 @@ from motlee.mot.measurement_info import MeasurementInfo
 
 class Track():
 
-    def __init__(self, camera_id, track_id, track_params, init_measurements, init_state):
-        self.A = np.copy(track_params.A)
-        self.H = np.copy(track_params.H)
-        self.Q = np.copy(track_params.Q)
-        self.P = np.copy(track_params.P)
+    def __init__(self, camera_id, track_id, init_measurements, init_state, motion_model, storage_size):
+        self.A = np.copy(motion_model.A)
+        self.H = np.copy(motion_model.H)
+        self.Q = np.copy(motion_model.Q)
+        self.P = np.copy(motion_model.P0)
+        self.R = None
         self.shape_x = self.A.shape[0]
         self.shape_z = self.H.shape[0]
 
@@ -19,7 +20,7 @@ class Track():
         self._measurements = None
         self._state = init_state
 
-        self.rec_det_max_len = track_params.n_dets
+        self.rec_det_max_len = storage_size
         self.recent_detections = dict()
         self.historical_states = np.zeros((self.shape_x, self.rec_det_max_len)) * np.nan
         self.historical_states[:,0] = self._state.reshape((-1))
