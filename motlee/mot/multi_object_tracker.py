@@ -1,13 +1,9 @@
 import numpy as np
 from numpy.linalg import norm as norm, inv
 from scipy.optimize import linear_sum_assignment
-from scipy.spatial.transform import Rotation as Rot
-from scipy.linalg import logm
 from copy import deepcopy
 
 from motlee.mot.track import Track
-from motlee.realign.frame_align_filter import FrameAlignFilter
-from motlee.utils.transform import transform
 
 NUM_CAMS = 4
 COV_MAG = .01

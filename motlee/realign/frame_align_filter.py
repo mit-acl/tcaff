@@ -1,7 +1,6 @@
 import numpy as np
 from numpy.linalg import inv
 from scipy.spatial.transform import Rotation as Rot
-from enum import Enum, auto
 
 import open3d as o3d
 if o3d.__DEVICE_API__ == 'cuda':
@@ -10,8 +9,6 @@ else:
     import open3d.cpu.pybind.t.pipelines.registration as treg
 import clipperpy
 
-from motlee.config.track_params import TrackParams
-from motlee.mot.measurement_info import MeasurementInfo
 from motlee.utils.transform import transform, T_mag, transform_2_xypsi, xypsi_2_transform, \
     T2d_2_T3d
 from motlee.realign.wls import wls, wls_residual
