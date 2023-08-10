@@ -27,16 +27,18 @@ class FrameAlignSolution():
     def __init__(
         self,
         success,
-        transform = None,
-        num_objs_associated = None,
-        transform_residual = None,
-        objective_score = None
+        transform=None,
+        num_objs_associated=None,
+        transform_residual=None,
+        objective_score=None,
+        associated_objs=None
     ):
         self.success = success
         self.transform = transform
         self.num_objs_associated = num_objs_associated
         self.transform_residual = transform_residual
         self.objective_score = objective_score
+        self.associated_objs = associated_objs
         
     def __str__(self):
         if not self.success:
@@ -50,6 +52,8 @@ class FrameAlignSolution():
             ret += f"Transform residual: {self.transform_residual}\n"
         if self.objective_score is not None:
             ret += f"Objective score: {self.objective_score}\n"
+        if self.associated_objs is not None:
+            ret += f"Associated objects: {self.associated_objs.T}"
         return ret
 
 class FrameAligner():
@@ -130,10 +134,10 @@ class FrameAligner():
             int: number of corresponding objects used for alignment
         """
         if static_objects is not None:
-            static_corres, static_weights, static_assoc_scores = self.associate_static_objects(static_objects, static_ages, T_init_guess)
+            inliers, static_corres, static_weights, static_assoc_scores = self.associate_static_objects(static_objects, static_ages, T_init_guess)
             solutions = []
                 
-            for i, (sc, sw, ss) in enumerate(zip(static_corres, static_weights, static_assoc_scores)):
+            for i, (ins, sc, sw, ss) in enumerate(zip(inliers, static_corres, static_weights, static_assoc_scores)):
                 if dynamic_objects is None:
                     solutions.append(self.compose_solution(sc[0], sc[1], sw))
                 else:
@@ -153,6 +157,8 @@ class FrameAligner():
                     objs2_all = np.vstack([sc[1], dynamic_objects[1]])
                     solutions.append(self.compose_solution(objs1_all, objs2_all, weights_all))
                     solutions[-1].objective_score = ss
+                if solutions[-1].success:
+                    solutions[-1].associated_objs = np.copy(ins)
         elif dynamic_objects is not None:
             solutions = [self.compose_solution(dynamic_objects[0], dynamic_objects[1], dynamic_weights)]
         else:
@@ -168,7 +174,7 @@ class FrameAligner():
         objs1, objs2 = static_objects
         ages1, ages2 = static_ages if static_ages is not None else (np.ones(objs1.shape[0]), np.ones(objs2.shape[0]))
         if 0 in objs1.shape or 0 in objs2.shape:
-            return [[np.array([]), np.array([])]], [np.array([])], [None if not self.method != AssocMethod.CLIPPER_MULT_SOL else 0.]
+            return None, [[np.array([]), np.array([])]], [np.array([])], [None if not self.method != AssocMethod.CLIPPER_MULT_SOL else 0.]
         if self.method == AssocMethod.ICP or \
             self.method == AssocMethod.ICP_STRONG_CORRES:
             assert T_init_guess is not None, "initial guess is required for ICP registration method"
@@ -195,12 +201,13 @@ class FrameAligner():
             objs1_corres = np.delete(objs1_corres, to_delete, axis=0)
             objs2_corres = np.delete(objs2_corres, to_delete, axis=0)
             weights_corres = np.delete(weights_corres, to_delete, axis=0)
+            Ain = None # TODO: find inliniers
             
         elif self.method == AssocMethod.CLIPPER or \
             self.method == AssocMethod.CLIPPER_MULT_SOL or \
             self.method == AssocMethod.CLIPPER_SPARSE:
-            objs1 = np.array([o[:2] for o in objs1.tolist()])
-            objs2 = np.array([o[:2] for o in objs2.tolist()])
+            objs1 = np.array([o for o in objs1.tolist()])
+            objs2 = np.array([o for o in objs2.tolist()])
             if self.method == AssocMethod.CLIPPER or \
                 self.method == AssocMethod.CLIPPER_SPARSE:
                 Ain = self.clipper_data_association(objs1, objs2)
@@ -220,9 +227,10 @@ class FrameAligner():
                 # Ain = Ains[opt_idx]
         
         if self.method == AssocMethod.CLIPPER_MULT_SOL:
-            return [(o1c, o2c) for o1c, o2c in zip(objs1_corres, objs2_corres)], weights_corres, scores
+            return Ains, [(o1c, o2c) for o1c, o2c in zip(objs1_corres, objs2_corres)], weights_corres, scores
         else:
-            return [(objs1_corres, objs2_corres)], [weights_corres], [None]    
+            # TODO: get Ain for ICP
+            return [Ain], [(objs1_corres, objs2_corres)], [weights_corres], [None]    
         
     def compose_solution(self, objs1_corres, objs2_corres, weights_corres):
 
