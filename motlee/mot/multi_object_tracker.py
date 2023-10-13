@@ -22,7 +22,8 @@ class MultiObjectTracker():
         alpha=2000,
         kappa=10,
         nu=3,
-        track_storage_size=1
+        track_storage_size=1,
+        dim_association=2
     ):
         
         """_summary_
@@ -52,6 +53,7 @@ class MultiObjectTracker():
         self.alpha = alpha
         self.kappa = kappa
         self.track_storage_size = track_storage_size
+        self.dim_association = dim_association
         
         self.tracks = []
         self.new_tracks = []
@@ -88,7 +90,7 @@ class MultiObjectTracker():
             for i in range(len(Zs)):
                 for j in range(len(Zs)):
                     if i == j: continue
-                    if norm(Zs[i][:2,:] - Zs[j][:2,:]) < self.merge_range_m:
+                    if norm(Zs[i][:self.dim_association,:] - Zs[j][:self.dim_association,:]) < self.merge_range_m:
                         need_to_merge = True
                         break
                 if need_to_merge:
@@ -99,15 +101,15 @@ class MultiObjectTracker():
         
         frame_detections = []
         for z in Zs:
-            frame_detections.append(z[0:2,:].reshape(-1,1))
+            frame_detections.append(z[:self.dim_association,:].reshape(-1,1))
         all_tracks = self.tracks + self.new_tracks
         geometry_scores = np.zeros((len(all_tracks), len(Zs)))
         large_num = 1000
         for i, track in enumerate(all_tracks):
-            Hx_xy = (track.H @ track.xbar)[0:2,:]
+            Hx_xy = (track.H @ track.xbar)[:self.dim_association,:]
             for j, (Z, aj, R) in enumerate(zip(Zs, feature_vecs, Rs)):
-                z_xy = Z[0:2,:]
-                V = track.P[:2,:2] + R
+                z_xy = Z[:self.dim_association,:]
+                V = track.P[:z_xy.shape[0],:z_xy.shape[0]] + R
                 # Mahalanobis distance
                 d = np.sqrt((z_xy - Hx_xy).T @ np.linalg.inv(V) @ (z_xy - Hx_xy)).item(0)
                 self.MDs.append(d)
@@ -116,7 +118,7 @@ class MultiObjectTracker():
                 if not d < self.Tau_LDA:
                     s_d = large_num
                 elif USE_NLML:
-                    s_d = 1/self.alpha*(2*np.log(2*np.pi) + d**2 + np.log(np.linalg.det(V)))
+                    s_d = 1/self.alpha*(self.dim_association*np.log(2*np.pi) + d**2 + np.log(np.linalg.det(V)))
                 else:
                     s_d = 1/self.alpha*d
                 if np.isnan(s_d):
@@ -194,11 +196,11 @@ class MultiObjectTracker():
         geometry_scores = np.zeros((len(self.unassociated_obs), len(self.unassociated_obs + tracked_states)))
         # TODO: This iteration stuff happens in three places now. Clean up and put in some function
         for i in range(len(self.unassociated_obs)):
-            xi_xy = self.unassociated_obs[i].xbar[0:2,:]
+            xi_xy = self.unassociated_obs[i].xbar[:self.dim_association,:]
             for j in range(len(self.unassociated_obs)):
                 if i == j:
                     continue
-                xj_xy = self.unassociated_obs[j].xbar[0:2,:]
+                xj_xy = self.unassociated_obs[j].xbar[:self.dim_association,:]
                 # distance
                 d = np.sqrt((xi_xy - xj_xy).T @ (xi_xy - xj_xy)).item(0)
                 
@@ -208,7 +210,7 @@ class MultiObjectTracker():
                 
             for j in range(len(tracked_states)):
                 j_gs = j+len(self.unassociated_obs) # j for indexing into geometry_scores
-                xj_xy = tracked_states[j].xbar[0:2,:]
+                xj_xy = tracked_states[j].xbar[:self.dim_association,:]
                 # distance
                 d = np.sqrt((xi_xy - xj_xy).T @ (xi_xy - xj_xy)).item(0)
                 
@@ -236,7 +238,7 @@ class MultiObjectTracker():
                 if track_obs.zs is not None:
                     # This needs to be fixed so that it is correct when being sent to other camera (rather than
                     # being written for being received)
-                    z = track_obs.zs[0].reshape(-1)[:2]
+                    z = track_obs.zs[0].reshape(-1)[:self.dim_association]
                     Jac_T = np.array([
                         [1.0, 0.0, -(z.item(1) - self.neighbor_poses[cam][1,3])], # should be expressed in body frame, not world frame
                         [0.0, 1.0, (z.item(0) - self.neighbor_poses[cam][0,3])], # 
@@ -287,12 +289,14 @@ class MultiObjectTracker():
                     self.unassociated_obs.append(obs)
         return len(self.unassociated_obs)
             
-    def get_tracks(self, format='state_color'):
+    def get_tracks(self, format='state_color', include_track_fun=lambda x : True):
         # TODO: change what we're returning here
         if format == 'state_color':
             Xs = []
             colors = []
             for track in self.tracks:
+                if not include_track_fun(track):
+                    continue
                 assert track.id[0] == self.camera_id
                 Xs.append(track.state)
                 colors.append(track.color)
@@ -300,12 +304,16 @@ class MultiObjectTracker():
         elif format == 'dict':
             track_dict = dict()
             for track in self.tracks:
-                track_dict[track.id] = np.array(track.state[0:2,:].reshape(-1))
+                if not include_track_fun(track):
+                    continue
+                track_dict[track.id] = np.array(track.state[:self.dim_association,:].reshape(-1))
             return track_dict
         elif format == 'list':
             track_list = []
             for track in self.tracks:
-                track_list.append(track.state[0:2,:].reshape(-1).tolist())
+                if not include_track_fun(track):
+                    continue
+                track_list.append(track.state[:self.dim_association,:].reshape(-1).tolist())
             return track_list
         else:
             print('you cannot do that')
