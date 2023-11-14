@@ -2,13 +2,6 @@ import numpy as np
 from numpy.linalg import inv
 from scipy.spatial.transform import Rotation as Rot
 
-import open3d as o3d
-if o3d.__DEVICE_API__ == 'cuda':
-    import open3d.cuda.pybind.t.pipelines.registration as treg
-else:
-    import open3d.cpu.pybind.t.pipelines.registration as treg
-import clipperpy
-
 from motlee.utils.transform import transform, T_mag, transform_2_xypsi, xypsi_2_transform, \
     T2d_2_T3d
 from motlee.realign.wls import wls, wls_residual

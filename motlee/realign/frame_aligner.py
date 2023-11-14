@@ -2,11 +2,15 @@ import numpy as np
 from numpy.linalg import inv
 from enum import Enum, auto
 
-import open3d as o3d
-if o3d.__DEVICE_API__ == 'cuda':
-    import open3d.cuda.pybind.t.pipelines.registration as treg
-else:
-    import open3d.cpu.pybind.t.pipelines.registration as treg
+# Install with extra align option in setup.py
+try:
+    import open3d as o3d
+    if o3d.__DEVICE_API__ == 'cuda':
+        import open3d.cuda.pybind.t.pipelines.registration as treg
+    else:
+        import open3d.cpu.pybind.t.pipelines.registration as treg
+except:
+    pass
 import clipperpy
 
 from motlee.utils.transform import T2d_2_T3d
