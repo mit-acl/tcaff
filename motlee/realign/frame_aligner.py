@@ -14,6 +14,7 @@ except:
 import clipperpy
 
 from motlee.utils.transform import T2d_2_T3d
+from motlee.utils.transform import transform as perform_transform
 from motlee.realign.wls import wls, wls_residual
 
 class AssocMethod(Enum):
@@ -481,3 +482,52 @@ class FrameAligner():
             # objs0_corres, objs1_corres = get_inlier_associations(pts1, pts2, pairs)
 
         return all_pairs, all_scores
+    
+    def prune_putative_associations(self, shape1, shape2, prune_fun):
+        """
+        Takes an all to all association matrix and prunes out unlikely associations using the 
+            provided pruning function. An example of this would be pruning object associations by 
+            their relative size.
+
+        Args:
+            shape1 (int): Number of points in the first point set
+            shape2 (int): Number of points in the second point set
+            prune_fun (function, arity 2): function with arguments index1 and index2 which returns 
+                true if the correspondence between two points should be pruned, else false.
+
+        Returns:
+            np.array (int), shape (n,2): Putative associations
+        """
+        A_all = np.zeros((shape1 * shape2, 2)).astype(np.int64)
+        A_i = 0
+        for i in range(shape1):
+            for j in range(shape2):
+                A_all[A_i,:] = [i, j]
+                A_i += 1
+
+        to_delete = []
+        for i, pair in enumerate(A_all):
+            if prune_fun(pair[0], pair[1]):
+                to_delete.append(i)
+                
+        A_put = np.delete(A_all, to_delete, axis=0)
+        return A_put
+    
+    def plot_solution(self, pts1: np.array, pts2: np.array, solution: FrameAlignSolution):
+
+        def subplot(ax, pts1, pts2, associations):
+            ax.plot(pts1[:,0], pts1[:,1], 's')
+            ax.plot(pts2[:,0], pts2[:,1], 's')
+            for corres in associations:
+                ax.plot([pts1[corres[0], 0], pts2[corres[1],0]], 
+                        [pts1[corres[0], 1], pts2[corres[1],1]], color='cyan')
+
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(1,2)
+
+        subplot(ax[0], pts1, pts2, solution.associated_objs)
+        subplot(ax[1], pts1, perform_transform(solution.transform, pts2, stacked_axis=0), solution.associated_objs)
+
+        return fig, ax
+        
+
