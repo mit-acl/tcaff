@@ -483,7 +483,7 @@ class FrameAligner():
 
         return all_pairs, all_scores
     
-    def prune_putative_associations(self, shape1, shape2, prune_fun):
+    def prune_putative_associations(self, shape1, shape2, prune_fun, A_init=None):
         """
         Takes an all to all association matrix and prunes out unlikely associations using the 
             provided pruning function. An example of this would be pruning object associations by 
@@ -494,30 +494,34 @@ class FrameAligner():
             shape2 (int): Number of points in the second point set
             prune_fun (function, arity 2): function with arguments index1 and index2 which returns 
                 true if the correspondence between two points should be pruned, else false.
+            A_init (np.array, type(int), shape(n,2)): list of pairs of associations between 
+                dataset 1 and 2
 
         Returns:
             np.array (int), shape (n,2): Putative associations
         """
-        A_all = np.zeros((shape1 * shape2, 2)).astype(np.int64)
-        A_i = 0
-        for i in range(shape1):
-            for j in range(shape2):
-                A_all[A_i,:] = [i, j]
-                A_i += 1
+        if A_init is None:
+            A_all = np.zeros((shape1 * shape2, 2)).astype(np.int64)
+            A_i = 0
+            for i in range(shape1):
+                for j in range(shape2):
+                    A_all[A_i,:] = [i, j]
+                    A_i += 1
+            A_init = A_all
 
         to_delete = []
-        for i, pair in enumerate(A_all):
+        for i, pair in enumerate(A_init):
             if prune_fun(pair[0], pair[1]):
                 to_delete.append(i)
                 
-        A_put = np.delete(A_all, to_delete, axis=0)
+        A_put = np.delete(A_init, to_delete, axis=0)
         return A_put
     
-    def plot_solution(self, pts1: np.array, pts2: np.array, solution: FrameAlignSolution):
+    def plot_solution(self, pts1: np.array, pts2: np.array, solution: FrameAlignSolution, format1={}, format2={}):
 
         def subplot(ax, pts1, pts2, associations):
-            ax.plot(pts1[:,0], pts1[:,1], 's')
-            ax.plot(pts2[:,0], pts2[:,1], 's')
+            ax.plot(pts1[:,0], pts1[:,1], '.', **format1)
+            ax.plot(pts2[:,0], pts2[:,1], '.', **format2)
             for corres in associations:
                 ax.plot([pts1[corres[0], 0], pts2[corres[1],0]], 
                         [pts1[corres[0], 1], pts2[corres[1],1]], color='cyan')
