@@ -94,7 +94,10 @@ def dump_everything_in_the_whole_world(frametime, framenum, rovers, mots, rover_
         r_dict['tracks'] = m.get_tracks(format='list')
         r_dict['T_fix'] = dict()
         for r_id, T in m.neighbor_frame_align.items():
-            r_dict['T_fix'][r_id] = T.reshape(-1).tolist()
+            if T is None:
+                r_dict['T_fix'][r_id] = (np.ones(16)*np.nan).tolist()
+            else:
+                r_dict['T_fix'][r_id] = T.reshape(-1).tolist()
         d['rovers'][r] = r_dict
     return d
 
