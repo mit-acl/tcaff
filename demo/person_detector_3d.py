@@ -4,10 +4,10 @@ from motlee.utils.cam_utils import depth_mask_2_centroid
 
 class PersonDetector3D():
     
-    def __init__(self, K, depth_scale=.001, img_size=(256, 256)):
+    def __init__(self, K, depth_scale=.001, img_size=(256, 256), **kwargs):
         self.K = K
         self.depth_scale=depth_scale
-        self.detector = Yolov7Detector(traced=False, img_size=img_size)
+        self.detector = Yolov7Detector(traced=False, img_size=img_size, **kwargs)
         
     def masks(self, img, scale1d=.5):
         """
