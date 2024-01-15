@@ -74,6 +74,7 @@ class MultiObjectTracker():
             
         self.pose = None
         self.neighbor_poses = {c: None for c in self.connected_cams}
+        # frame aligns are transformations T_self_neighbor from neighbor to self odom frame
         self.neighbor_frame_align = {c: None for c in self.connected_cams}
         self.neighbor_frame_align_cov = {c: None for c in self.connected_cams}
         self.MDs = []
@@ -235,24 +236,39 @@ class MultiObjectTracker():
             track_obs = track.get_measurement_info(track.R)
             for cam in self.connected_cams:
                 R = np.copy(track.R)
-                if track_obs.zs is not None:
-                    # This needs to be fixed so that it is correct when being sent to other camera (rather than
-                    # being written for being received)
-                    z = track_obs.zs[0].reshape(-1)[:self.dim_association]
-                    Jac_T = np.array([
-                        [1.0, 0.0, -(z.item(1) - self.neighbor_poses[cam][1,3])], # should be expressed in body frame, not world frame
-                        [0.0, 1.0, (z.item(0) - self.neighbor_poses[cam][0,3])], # 
-                    ])
-                    Jac_R = inv(self.neighbor_frame_align[cam])[:2,:2].T
-                    Sigma_fa = self.neighbor_frame_align_cov[cam][:3, :3]
-                    # R = Jac_T @ (Sigma_fa) @ Jac_T.T + Jac_R @ R @ Jac_R.T
-                    R = Jac_R @ (Jac_T @ (Sigma_fa) @ Jac_T.T + R) @ Jac_R.T
-                    R = (R.T + R) / 2 # keep PD
                 if cam in self.neighbor_frame_align:
-                    T = inv(self.neighbor_frame_align[cam])
+                    # T from self odom to neighboring odom frame
+                    T_neighbor_self = inv(self.neighbor_frame_align[cam])
                 else:
-                    T = np.eye(4)
-                obs = track.get_measurement_info(R, T=T) # TODO: figure out R
+                    # T from self odom to neighboring odom frame
+                    T_neighbor_self = np.eye(4)
+                # No known transformation between two agents' frames
+                if np.any(np.isnan(T_neighbor_self)):
+                    continue
+
+                if track_obs.zs is not None:
+                    z = track_obs.zs[0].reshape(-1)[:self.dim_association]
+                    # Jac_T = np.array([
+                    #     [1.0, 0.0, -(z.item(1) - self.neighbor_poses[cam][1,3])], # should be expressed in body frame, not world frame
+                    #     [0.0, 1.0, (z.item(0) - self.neighbor_poses[cam][0,3])], # 
+                    # ])
+                    # Jac_R = inv(self.neighbor_frame_align[cam])[:2,:2].T
+                    # Sigma_fa = self.neighbor_frame_align_cov[cam][:3, :3]
+                    # # R = Jac_T @ (Sigma_fa) @ Jac_T.T + Jac_R @ R @ Jac_R.T
+                    # R = Jac_R @ (Jac_T @ (Sigma_fa) @ Jac_T.T + R) @ Jac_R.T
+
+                    Jac_plus_1 = np.array([
+                        [1.0, 0.0, -z.item(1)], 
+                        [0.0, 1.0, z.item(0)], 
+                        [0.0, 0.0, 1.0],
+                    ])
+                    Jac_plus_2 = T_neighbor_self[:2,:2].T # transpose makes this the rotation from neighbor to self
+                    Sigma = self.neighbor_frame_align_cov[cam]
+                    
+                    R = (Jac_plus_1 @ Sigma @ Jac_plus_1.T)[:2,:2] + Jac_plus_2 @ R @ Jac_plus_2.T
+                    R = (R.T + R) / 2 # keep PD
+
+                obs = track.get_measurement_info(R, T=T_neighbor_self) # TODO: figure out R
                 obs.add_destination(cam)
                 observations.append(obs)
         return observations
