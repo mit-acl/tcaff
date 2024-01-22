@@ -10,6 +10,8 @@ def transform_vec(T, vec):
     transformed = T @ resized_vec
     return transformed.reshape(-1)[:unshaped_vec.shape[0]].reshape(vec.shape) 
 
+# TODO: rename stacked_axis and default to 0
+# TODO: handle tensors
 def transform(T, vecs, stacked_axis=1):
     if len(vecs.reshape(-1)) == 2 or len(vecs.reshape(-1)) == 3:
         return transform_vec(T, vecs)
@@ -23,6 +25,19 @@ def transform(T, vecs, stacked_axis=1):
     transformed = T @ one_padded_vecs
     transformed = transformed[:vecs_horz_stacked.shape[0],:] 
     return transformed if stacked_axis == 1 else transformed.T
+
+# TODO: use einsum here
+def transform_covariance(T, covariance):
+    n = covariance.shape[0]
+    R = T[:n,:n]
+    transformed_covariance = R @ covariance @ R.T
+    return transformed_covariance
+
+def transform_covariances(T, covariances):
+    transformed_covariances = []
+    for covariance in covariances:
+        transformed_covariances.append(transform_covariance(T, covariance))
+    return np.array(transformed_covariances)
 
 # gives scalar value to magnitude of translation
 def T_mag(T, deg2m):

@@ -77,7 +77,6 @@ class Track():
             u = np.zeros((self.shape_x, 1))
             U = np.zeros((self.shape_x, self.shape_x))
             for z in self._measurements:
-                # import ipdb; ipdb.set_trace()
                 u += self.H.T @ inv(self.R) @ z
                 U += self.H.T @ inv(self.R) @ self.H
                 self.zs[self._id[0]].append(np.copy(z))
