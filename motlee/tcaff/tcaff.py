@@ -1,7 +1,9 @@
 import numpy as np
 from copy import deepcopy
 
-MAIN_TREE_OBJ_REQ = 6.5
+# MAIN_TREE_OBJ_REQ = 6.5 # doesn't work for 4 8 currently
+# MAIN_TREE_OBJ_REQ = 5.25
+MAIN_TREE_OBJ_REQ = 5.18
 TIMES_WITH_NO_MEAS = 5
 STOP_EXPLORING_TREES_AFTER_MAIN_TREE = False
 
