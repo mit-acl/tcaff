@@ -1,0 +1,96 @@
+# Description: Just south of MIT medical, robots traveling oposite directions
+robot1:
+  name: "RR04"
+  premultiply: [0., 0., 0.]
+  T_BC: 
+  - - 0.01006108456396071
+    - 0.06813453178279799
+    - 0.9976254107409928
+    - 0.16143826423718655
+  - - -0.9999491893006764
+    - 0.0013113273647331614
+    - 0.009994960603300851
+    - 0.004966342458319978
+  - - -0.0006272115399644229
+    - -0.9976752808400539
+    - 0.06814426319509764
+    - -0.0018905189732034249
+  - - 0.0
+    - 0.0
+    - 0.0
+    - 1.0
+
+robot2:
+  name: "RR08"
+  premultiply: [0., 0., 0.] 
+  T_BC:
+  - - 0.0075156724929106855
+    - 0.052520932013504995
+    - 0.9985915413057593
+    - 0.2101108603826516
+  - - -0.999948500695071
+    - -0.00641591694631477
+    - 0.007863330555028802
+    - -0.012497043173790775
+  - - 0.00681986984179056
+    - -0.9985992127526291
+    - 0.05247000729150186
+    - -0.0018691769405706252
+  - - 0.0
+    - 0.0
+    - 0.0
+    - 1.0
+
+synchronize_timing: false
+
+pose_estimate:
+  root: "/home/masonbp/data/motlee_jan_2024/00"
+  topic: "t265/odom/sample"
+  type: "bag"
+  frame: "FLU"
+
+# pose_estimate: 
+#   root: "/home/masonbp/data/motlee_jan_2024/00"
+#   topic: "world"
+#   type: "bag"
+#   frame: "FLU"
+
+pose_gt: 
+  root: "/home/masonbp/data/motlee_jan_2024/00"
+  topic: "world"
+  type: "bag"
+  frame: "FLU"
+
+fastsam3d_data:
+  root: "/home/masonbp/results/motlee_jan_2024/fastsam3D/00/"
+
+mapping:
+  dim: 5
+  tau: 2.
+  kappa: 150
+  nu: 3
+  Q_el: .25
+  P0_el: .25
+  R_el: .5
+  Q_el_w: .25
+  Q_el_h: 1.
+  P0_el_w: .25
+  P0_el_h: 1.
+  ts: .1
+
+tcaff:
+  prob_no_match: .001
+  exploring_branching_factor: 2
+  window_len: 5
+  max_branch_exp: 50
+  max_branch_main: 200
+  rho: 1.1
+  clipper_epsilon: .5
+  clipper_sigma: .2
+  clipper_mult_repeats: 4
+  max_obj_width: 2.5
+  h_diff: 0.1
+  wh_scale_diff: 1.5
+  num_objs_req: 5
+  ts: 1.
+  max_opt_fraction: .5
