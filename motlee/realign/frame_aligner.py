@@ -531,6 +531,8 @@ class FrameAligner():
 
         subplot(ax[0], pts1, pts2, solution.associated_objs)
         subplot(ax[1], pts1, perform_transform(solution.transform, pts2, stacked_axis=0), solution.associated_objs)
+        ax[0].set_aspect('equal')
+        ax[1].set_aspect('equal')
 
         return fig, ax
         

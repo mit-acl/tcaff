@@ -8,7 +8,8 @@ DIFF_TOL = np.array([2., 2., .7])
 
 class Tree():
     
-    def __init__(self, xhat0, P0, A, H, Q, window_len, prob_no_match=.1, max_branching_factor=4, max_tree_leaves=np.inf):
+    def __init__(self, xhat0, P0, A, H, Q, window_len, prob_no_match=.1, 
+                 max_branching_factor=4, max_tree_leaves=np.inf, wrap_theta_idx_2=True):
         self.hyp_root = Node(xhat0, P0)
         self.hyp_root.add_model(A, H, Q)
         self.hyp_leaves = [self.hyp_root]
@@ -19,6 +20,7 @@ class Tree():
         self.max_branching_factor = max_branching_factor
         self.prob_no_match_nl = -np.log(prob_no_match)
         self.max_tree_leaves = max_tree_leaves
+        self.wrap_theta_idx_2 = wrap_theta_idx_2
         
     def update(self, zs, Rs):
         # extend
@@ -63,7 +65,13 @@ class Tree():
                 Rs = deepcopy(Rs)
                 delete = []
                 for i, (z, R) in enumerate(zip(zs, Rs)):
-                    diff = np.abs(node.H @ node.xhat - z)
+                    Hxhat = node.H @ node.xhat
+                    if self.wrap_theta_idx_2:
+                        while Hxhat.item(2) - z.item(2) > np.pi:
+                            z[2] += 2*np.pi
+                        while Hxhat.item(2) - z.item(2) < -np.pi:
+                            z[2] -= 2*np.pi
+                    diff = np.abs(Hxhat - z)
                     if diff.item(0) > DIFF_TOL[0] or diff.item(1) > DIFF_TOL[0] or diff.item(2) > DIFF_TOL[0]:
                         delete.append(i)
                     else:
@@ -76,6 +84,11 @@ class Tree():
                         
             else:
                 for z, R in zip(zs, Rs):
+                    if self.wrap_theta_idx_2:
+                        while Hxhat.item(2) - z.item(2) > np.pi:
+                            z[2] += 2*np.pi
+                        while Hxhat.item(2) - z.item(2) < -np.pi:
+                            z[2] -= 2*np.pi
                     nlmls.append(node.nlml(z, R))
             
             z_sorted = [z for _, z in sorted(zip(nlmls, zs), key=lambda zipped: zipped[0])]

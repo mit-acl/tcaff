@@ -2,9 +2,8 @@ import numpy as np
 from copy import deepcopy
 
 # MAIN_TREE_OBJ_REQ = 6.5 # doesn't work for 4 8 currently
-# MAIN_TREE_OBJ_REQ = 5.25
+# MAIN_TREE_OBJ_REQ = 5.18
 MAIN_TREE_OBJ_REQ = 5.18
-TIMES_WITH_NO_MEAS = 5
 STOP_EXPLORING_TREES_AFTER_MAIN_TREE = False
 
 class TCAFF():
@@ -16,6 +15,7 @@ class TCAFF():
         create_exploring_tree,
         create_main_tree,
         rho=3.,
+        steps_before_main_tree_deletion=20,
     ):        
         self.z2x = z2x
         self.k = 0 # depth
@@ -28,12 +28,13 @@ class TCAFF():
         self.create_exploring_tree = create_exploring_tree
         self.create_main_tree = create_main_tree
         self.steps_with_no_meas = 0
+        self.steps_before_main_tree_deletion = steps_before_main_tree_deletion
         
     def update(self, zs, Rs):
-        if len(zs) == 0 and len(self.exploring_trees) == 0:
-            self.reset_main_tree()
-            self.k = 0
-            return        
+        # if len(zs) == 0 and len(self.exploring_trees) == 0:
+        #     self.reset_main_tree()
+        #     self.k = 0
+        #     return        
         
         zs_cp = deepcopy(zs)
         Rs_cp = deepcopy(Rs)
@@ -69,11 +70,15 @@ class TCAFF():
             for tree in self.exploring_trees:
                 tree.update(zs, Rs)
         else:
+            # print(f"{self.k}: {self.steps_with_no_meas}")
             for tree in self.exploring_trees:
                 for zs_from_bank, Rs_from_bank in zip(self.z_bank, self.R_bank):
                     tree.update(zs_from_bank, Rs_from_bank)
 
+            if self.steps_with_no_meas > self.steps_before_main_tree_deletion:
+                self.reset_main_tree()
             if self.main_tree_condition():
+                self.steps_with_no_meas = 0
                 if self.main_tree is None:
                     self.setup_main_tree()
                 elif not self.shares_measurements(self.main_tree, self.get_optimal_tree()):
@@ -110,16 +115,19 @@ class TCAFF():
                 self.steps_with_no_meas += 1
             else:
                 self.steps_with_no_meas = 0
-            return obj_opt < MAIN_TREE_OBJ_REQ and self.steps_with_no_meas > TIMES_WITH_NO_MEAS
+            # if obj_opt < MAIN_TREE_OBJ_REQ and self.steps_with_no_meas > self.steps_before_main_tree_deletion:
+            #     self.steps_with_no_meas = 0
+            #     return True
+            return False
             # return False
             # return obj_opt < -2 and self.main_tree.optimal.cumulative_objective() > 5
-        tree_opt = self.get_optimal_tree()
-        obj_all = [opt.cumulative_objective() for opt in [tree.optimal for tree in self.exploring_trees]]
-        obj_all.remove(obj_opt)
-        if len(obj_all) == 0:
-            num_meas = [node.z for node in tree_opt.get_optimal_ancestral_line() if node.z is not None]
-            num_non_meas = [node.z for node in tree_opt.get_optimal_ancestral_line() if node.z is None]
-            return len(num_meas) > len(num_non_meas)
+        # tree_opt = self.get_optimal_tree()
+        # obj_all = [opt.cumulative_objective() for opt in [tree.optimal for tree in self.exploring_trees]]
+        # obj_all.remove(obj_opt)
+        # if len(obj_all) == 0:
+        #     num_meas = [node.z for node in tree_opt.get_optimal_ancestral_line() if node.z is not None]
+        #     num_non_meas = [node.z for node in tree_opt.get_optimal_ancestral_line() if node.z is None]
+        #     return len(num_meas) > len(num_non_meas)
             
         return obj_opt < MAIN_TREE_OBJ_REQ
         # return self.rho * obj_opt < np.min(obj_all) and obj_opt < MAIN_TREE_OBJ_REQ

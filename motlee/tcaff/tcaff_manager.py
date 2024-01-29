@@ -11,7 +11,6 @@ from motlee.utils.transform import transform_2_xypsi, xypsi_2_transform
 
 SCALING = 1
 SE2_STORAGE_DIM = 3
-# MAX_OPT_FRACTION = .75
 
 class TCAFFManager(FrameAlignFilter):
 
@@ -30,7 +29,8 @@ class TCAFFManager(FrameAlignFilter):
         h_diff = 0.08,
         wh_scale_diff=1.25, #2.5
         num_objs_req=6,
-        max_opt_fraction=.5
+        max_opt_fraction=.5,
+        steps_before_main_tree_deletion=20,
     ):
         super().__init__()
 
@@ -49,7 +49,8 @@ class TCAFFManager(FrameAlignFilter):
             max_leaves_main=max_branch_main,
             rho=rho,
             prob_no_match=prob_no_match, 
-            exploring_branching_factor=exploring_branching_factor
+            exploring_branching_factor=exploring_branching_factor,
+            steps_before_main_tree_deletion=steps_before_main_tree_deletion
         )
         self.R = setup_measurement_model()
 
@@ -82,30 +83,34 @@ class TCAFFManager(FrameAlignFilter):
             return self.faf.main_tree.optimal.P[:3,:3]
 
     def get_frame_align_measurements(self, ego_map: ObjectMap, other_map: ObjectMap):
-        A_put = self.get_putative_assoc(ego_map, other_map)
-        
         # Solution filtering and data setup
-        if len(ego_map) == 0 or len(other_map) == 0 or (A_put is not None and A_put.shape[0] == 0):
+        if len(ego_map) == 0 or len(other_map) == 0:
+            return np.array([])
+        A_put = self.get_putative_assoc(ego_map, other_map)
+        if A_put.shape[0] == 0:
+            return np.array([])
+        
+        # perform frame alignment
+        sols = self.fa.align_objects(
+            static_objects=[ego_map.centroids[:,:2], other_map.centroids[:,:2]], 
+            static_ages=[ego_map.ages, other_map.ages], static_put_assoc=A_put)
+
+        # return alignment results in measurement form   
+        if len([None for sol in sols if sol.success]) == 0:
             return np.array([])
         else:
-            sols = self.fa.align_objects(
-                static_objects=[ego_map.centroids[:,:2], other_map.centroids[:,:2]], 
-                static_ages=[ego_map.ages, other_map.ages], static_put_assoc=A_put)
-            if len([None for sol in sols if sol.success]) == 0:
-                return np.array([])
-            else:
-                align = []
-                align_obj = []
-                align_cov = []
-                max_opt = max([sol.objective_score for sol in sols if sol.objective_score is not None])
-                for sol in sols:
-                    # filter out alignment failures and reflections
-                    if sol.success and np.allclose(sol.transform[0,0], sol.transform[1,1]) and sol.objective_score > self.max_opt_fraction*max_opt:
-                        align.append(np.array(transform_2_xypsi(sol.transform)))
-                        align_obj.append(sol.objective_score)
-                    else:
-                        continue
-                return np.array(align)
+            align = []
+            align_obj = []
+            align_cov = []
+            max_opt = max([sol.objective_score for sol in sols if sol.objective_score is not None])
+            for sol in sols:
+                # filter out alignment failures and reflections
+                if sol.success and np.allclose(sol.transform[0,0], sol.transform[1,1]) and sol.objective_score > self.max_opt_fraction*max_opt:
+                    align.append(np.array(transform_2_xypsi(sol.transform)))
+                    align_obj.append(sol.objective_score)
+                else:
+                    continue
+            return np.array(align)
 
     def get_putative_assoc(self, map1: ObjectMap, map2: ObjectMap):
         A_all = np.zeros((len(map1) * len(map2), 2)).astype(np.int64)
@@ -137,7 +142,8 @@ def setup_frame_align_filter(
     exploring_branching_factor=2,
     max_leaves_exp=10,
     max_leaves_main=20,
-    prob_no_match=.01
+    prob_no_match=.01,
+    steps_before_main_tree_deletion=20
 ):
     ts = 1.0
     A = np.array([
@@ -205,7 +211,9 @@ def setup_frame_align_filter(
     create_main_tree = lambda xhat0 : TCAFFTree(
         xhat0=xhat0, P0=P0, A=A, H=H, Q=Q, window_len=window_len, prob_no_match=prob_no_match, 
         max_branching_factor=4, max_tree_leaves=max_leaves_main)
-    frame_align_filter = TCAFF(z2x=z2x_func, K=window_len, create_exploring_tree=create_exploring_tree, create_main_tree=create_main_tree, rho=rho)
+    frame_align_filter = TCAFF(z2x=z2x_func, K=window_len, create_exploring_tree=create_exploring_tree, 
+                               create_main_tree=create_main_tree, rho=rho, 
+                               steps_before_main_tree_deletion=steps_before_main_tree_deletion)
     return frame_align_filter
 
 def setup_measurement_model():
