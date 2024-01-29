@@ -71,7 +71,8 @@ for name, other_name in zip(robot_names, robot_names[::-1]):
                 file_type='csv',
                 interp=True,
                 csv_options=KDM_CSV_OPTIONS,
-                time_tol=5.0
+                time_tol=5.0,
+                T_premultiply=xypsi_2_transform(*params[name]['premultiply'])
             )
 
     pose_est_data = pose_data['pose_estimate']
@@ -111,7 +112,8 @@ for name, other_name in zip(robot_names, robot_names[::-1]):
         h_diff=params['tcaff']['h_diff'],
         wh_scale_diff=params['tcaff']['wh_scale_diff'],
         num_objs_req=params['tcaff']['num_objs_req'],
-        max_opt_fraction=params['tcaff']['max_opt_fraction']
+        max_opt_fraction=params['tcaff']['max_opt_fraction'],
+        steps_before_main_tree_deletion=params['tcaff']['steps_before_main_tree_deletion']
     )
     
     fastsam3d_detections = DetectionData(
@@ -160,13 +162,13 @@ motlee_data_processor = MOTLEEDataProcessor(
 
 # setup results
 results = {robot.name: AlignmentResults() for robot in robots}
-if args.viz:
-    object_file = "/home/masonbp/data/motlee_jan_2024/objects.txt"
-    objects = []
-    with open(object_file, "r") as f:
-        for l in f.readlines():
-            objects.append([float(n.strip()) for n in l.strip().split(',')])
-    objects = np.array(objects)
+# if args.viz:
+#     object_file = "/home/masonbp/data/motlee_jan_2024/objects.txt"
+#     objects = []
+#     with open(object_file, "r") as f:
+#         for l in f.readlines():
+#             objects.append([float(n.strip()) for n in l.strip().split(',')])
+#     objects = np.array(objects)
     
 # Run the data processor
 for t in tqdm(np.arange(t0, tf, params['mapping']['ts'])):
@@ -174,12 +176,19 @@ for t in tqdm(np.arange(t0, tf, params['mapping']['ts'])):
     if motlee_data_processor.fa_updated:
         if args.viz:
             plt.gca().clear()
-            plt.plot(objects[:,0], objects[:,1], 'k.')
+            # plt.plot(objects[:,0], objects[:,1], 'k.')
             r0_map = robots[0].get_map()
+            r1_map = robots[1].get_map()
             if len(r0_map) > 0:
                 plt.plot(r0_map.centroids[:,0], r0_map.centroids[:,1], 'r.')
-            square_equal_aspect()
+            if len(r1_map) > 0:
+                plt.plot(r1_map.centroids[:,0], r1_map.centroids[:,1], 'b.')
+            # square_equal_aspect()
+            plt.gca().set_aspect('equal')
+            plt.xlim(-40, 40)
+            plt.ylim(-30, 30)
             plot_pose2d(robots[0].pose_est_data.T_WB(t))
+            plot_pose2d(robots[1].pose_est_data.T_WB(t))
             plt.pause(0.01)
 
 
@@ -196,7 +205,7 @@ for t in tqdm(np.arange(t0, tf, params['mapping']['ts'])):
 
 
 
-# Find rover passing time
+# # Find rover passing time
 # min_dist = np.inf
 # min_dist_t = None
 # for t in np.arange(t0, tf, params['mapping']['ts']):

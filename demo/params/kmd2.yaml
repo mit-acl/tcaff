@@ -1,23 +1,26 @@
 # Description: Just south of MIT medical, robots traveling oposite directions
 robot1:
   name: "sparkal2"
-  t_start: 1666030762
+  # t_start: 1666030762
+  t_start: 1666030792
   t_end: 1666030885
-  # premultiply: [-200., 200., 0.]
   premultiply: [0., 0., 0.]
+  # premultiply: [-465., 261., 0.]
 
 robot2:
   name: "sparkal1"
   t_start: 1665777918
   t_end: 1665778015
-  premultiply: [-0., 50., 0.]
-  # premultiply: [0., 0., 0.] 
+  premultiply: [-0., 0., 0.]
+  # premultiply: [-465., 261., 0.]
 
 synchronize_timing: true
 
 pose_estimate:
   root: "/home/masonbp/results/kmd_motlee/kimera_vio/"
   type: "bag"
+  topic: "kimera_vio_ros/odometry"
+  frame: "RDF"
 
 # pose_estimate:
 #   root: "/home/masonbp/data/kimera_multi/outdoor/gt/"
@@ -33,7 +36,7 @@ fastsam3d_data:
 mapping:
   dim: 5
   tau: 2.
-  kappa: 250
+  kappa: 200
   nu: 3
   Q_el: .25
   P0_el: .25
@@ -51,12 +54,12 @@ tcaff:
   max_branch_exp: 50
   max_branch_main: 200
   rho: 1.1
-  clipper_epsilon: .6
-  clipper_sigma: .4
+  clipper_epsilon: .4
+  clipper_sigma: .2
   clipper_mult_repeats: 4
   max_obj_width: 2.5
-  h_diff: 0.5
-  wh_scale_diff: 2.0
+  h_diff: 0.08
+  wh_scale_diff: 1.2
   num_objs_req: 6
   ts: 1.
-  max_opt_fraction: .5
+  max_opt_fraction: .75

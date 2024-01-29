@@ -3,16 +3,21 @@ robot1:
   name: "acl_jackal2"
   t_start: 1665775038
   t_end: 1665775116
+  premultiply: [0., 0., 0.] #[-320., 200., 0.]
 
 robot2:
   name: "sparkal2"
   t_start: 1666031072
   t_end: 1666031143
+  premultiply: [0., 0., 0.]
+
+synchronize_timing: true
 
 pose_estimate:
   root: "/home/masonbp/results/kmd_motlee/kimera_vio/"
   type: "bag"
-  # xytheta_premultiply: [320., -200., 0.]
+  topic: "kimera_vio_ros/odometry"
+  frame: "RDF"
 
 # pose_estimate:
 #   root: "/home/masonbp/data/kimera_multi/outdoor/gt/"
@@ -47,11 +52,11 @@ tcaff:
   max_branch_main: 200
   rho: 1.1
   clipper_epsilon: .5
-  clipper_sigma: .2
+  clipper_sigma: .3
   clipper_mult_repeats: 4
   max_obj_width: 0.8
-  h_diff: 0.08
-  wh_scale_diff: 1.25
+  h_diff: 0.1
+  wh_scale_diff: 1.5
   num_objs_req: 6
   ts: 1.
   max_opt_fraction: .5

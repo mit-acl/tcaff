@@ -112,14 +112,20 @@ class DetectionData(RobotData, Detections):
         self._heights = [item['heights'] for item in data if 'heights' in item]
         
     def detections(self, t):
+        # TODO: dist filtering magic numbers!!
         detections = np.array(self._detections[self.idx(t)])
         if len(detections) == 0:
             return [], []
         transformed_centroids = np.array([np.array(z).reshape(-1) for z in transform(self.T_BC, detections, stacked_axis=0).tolist()])
         if len(self._widths) > 0 and len(self._heights) > 0:
             zs = np.hstack((transformed_centroids, np.array(self._widths[self.idx(t)]).reshape((-1,1)), np.array(self._heights[self.idx(t)]).reshape((-1,1))))
-        return zs, \
-            np.array([R_SHOULD_BE_PARAM for z in zs])
+        
+        Rs = np.array([R_SHOULD_BE_PARAM for z in zs])
+
+        Rs = np.delete(Rs, np.bitwise_or(zs[:,0] > 10, zs[:,0] < 0.), axis=0) # TODO: < 1.5???
+        zs = np.delete(zs, np.bitwise_or(zs[:,0] > 10, zs[:,0] < 0.), axis=0)
+    
+        return zs, Rs
     
 class MultiDetectionData(RobotData, Detections):
 
