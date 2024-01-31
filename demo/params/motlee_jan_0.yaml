@@ -78,11 +78,13 @@ mapping:
   P0_el_w: .25
   P0_el_h: .25
   ts: .1
+  zmin: 0.
+  zmax: 10.
 
 tcaff:
   prob_no_match: .001
   exploring_branching_factor: 2
-  window_len: 10
+  window_len: 8
   max_branch_exp: 50
   max_branch_main: 200
   rho: 1.1
@@ -99,4 +101,4 @@ tcaff:
   ts: 1.
   max_opt_fraction: .75
   steps_before_main_tree_deletion: 5
-  main_tree_obj_req: 11.
+  main_tree_obj_req: 9.

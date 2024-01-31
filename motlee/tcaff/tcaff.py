@@ -73,23 +73,25 @@ class TCAFF():
                 tree.update(zs, Rs)
         else:
             # print(f"{self.k}: {self.steps_with_no_meas}")
-            for tree in self.exploring_trees:
-                for zs_from_bank, Rs_from_bank in zip(self.z_bank, self.R_bank):
-                    tree.update(zs_from_bank, Rs_from_bank)
 
             if self.steps_with_no_meas > self.steps_before_main_tree_deletion:
                 self.reset_main_tree()
+                self.steps_with_no_meas = 0
+            if self.main_tree is None:
+                for tree in self.exploring_trees:
+                    for zs_from_bank, Rs_from_bank in zip(self.z_bank, self.R_bank):
+                        tree.update(zs_from_bank, Rs_from_bank)
             if self.main_tree_condition():
                 self.steps_with_no_meas = 0
-                if self.main_tree is None:
-                    self.setup_main_tree()
-                elif not self.shares_measurements(self.main_tree, self.get_optimal_tree()):
+                # if self.main_tree is None:
+                self.setup_main_tree()
+                # elif not self.shares_measurements(self.main_tree, self.get_optimal_tree()):
                         # print('uh oh')
                         # print(self.main_tree.optimal.cumulative_objective())
                         # print([node.z for node in self.get_optimal_tree().get_optimal_ancestral_line()])
                         # print(self.get_optimal_tree().optimal.cumulative_objective())
                     # pass
-                    self.setup_main_tree()
+                    # self.setup_main_tree()
                     # self.main_tree = None
                     # self.k = 0
                     # self.z_bank = []

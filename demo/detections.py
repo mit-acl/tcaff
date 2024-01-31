@@ -85,7 +85,7 @@ class FastSAM3DDetections(Detections):
     
 class DetectionData(RobotData, Detections):
 
-    def __init__(self, data_file, file_type, time_tol=1.0, t0=None, T_BC=np.eye(4)):
+    def __init__(self, data_file, file_type, time_tol=1.0, t0=None, T_BC=np.eye(4), zmin=0., zmax=10.):
         super().__init__(time_tol=time_tol, interp=False)
         if file_type == 'json':
             self._extract_json_data(data_file)
@@ -94,6 +94,8 @@ class DetectionData(RobotData, Detections):
         if t0 is not None:
             self.set_t0(t0)
         self.T_BC = T_BC
+        self.zmin = zmin
+        self.zmax = zmax
         
     def _extract_json_data(self, json_file):
         """
@@ -124,8 +126,8 @@ class DetectionData(RobotData, Detections):
 
         # Rs = np.delete(Rs, np.bitwise_or(zs[:,0] > 15, zs[:,0] < 0.), axis=0) # TODO: < 1.5???
         # zs = np.delete(zs, np.bitwise_or(zs[:,0] > 15, zs[:,0] < 0.), axis=0)
-        Rs = np.delete(Rs, np.bitwise_or(zs[:,0] > 10., zs[:,0] < 1.5), axis=0) # TODO: < 1.5???
-        zs = np.delete(zs, np.bitwise_or(zs[:,0] > 10., zs[:,0] < 1.5), axis=0)
+        Rs = np.delete(Rs, np.bitwise_or(zs[:,0] > self.zmax, zs[:,0] < self.zmin), axis=0) # TODO: < 1.5???
+        zs = np.delete(zs, np.bitwise_or(zs[:,0] > self.zmax, zs[:,0] < self.zmin), axis=0)
     
         return zs, Rs
     

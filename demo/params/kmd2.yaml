@@ -2,7 +2,7 @@
 robot1:
   name: "sparkal2"
   # t_start: 1666030762
-  t_start: 1666030802
+  t_start: 1666030822
   t_end: 1666030885
   premultiply: [0., 0., 0.]
   # premultiply: [-465., 261., 0.]
@@ -39,7 +39,7 @@ mapping:
   dim: 5
   tau: 2.
   # kappa: 300
-  kappa: 200
+  kappa: 150
   nu: 3
   Q_el: .25
   P0_el: .25
@@ -49,11 +49,13 @@ mapping:
   P0_el_w: .25
   P0_el_h: .25
   ts: .1
+  zmin: 1.5
+  zmax: 10.
 
 tcaff:
   prob_no_match: .001
-  exploring_branching_factor: 3
-  window_len: 9
+  exploring_branching_factor: 2
+  window_len: 5
   max_branch_exp: 50
   max_branch_main: 200
   rho: 1.1
@@ -70,4 +72,4 @@ tcaff:
   ts: 1.
   max_opt_fraction: .75
   steps_before_main_tree_deletion: 5
-  main_tree_obj_req: 10.
+  main_tree_obj_req: 6.

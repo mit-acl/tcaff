@@ -11,7 +11,7 @@ from motlee.utils.transform import xypsi_2_transform
 
 from robot_utils.robot_data.robot_data import NoDataNearTimeException
 from robot_utils.robot_data.pose_data import PoseData
-from robot_utils.transform import T_FLURDF, T_RDFFLU, transform
+from robot_utils.transform import T_FLURDF, T_RDFFLU, transform, transform_2_xytheta
 from plot_utils import square_equal_aspect, plot_pose2d
 
 try:
@@ -124,6 +124,8 @@ for name, other_name in zip(robot_names, robot_names[::-1]):
         time_tol=1.0,
         # T_BC=np.eye(4) if pose_estimate_file_type == 'bag' else T_FLURDF,
         T_BC=T_FLURDF if 'T_BC' not in params[name] else np.array(params[name]['T_BC']).reshape((4,4)),
+        zmin=params['mapping']['zmin'],
+        zmax=params['mapping']['zmax']
     )
 
     if params['synchronize_timing']:
@@ -192,6 +194,8 @@ if args.viz:
     ylim = [ylim[0] - 10.0, ylim[1] + 10.0]
     
 # Run the data processor
+T_errs = []
+printed_err = {robot.name: False for robot in robots}
 for t in tqdm(np.arange(t0, tf, params['mapping']['ts'])):
     motlee_data_processor.update(t)
     if motlee_data_processor.fa_updated:
@@ -232,6 +236,33 @@ for t in tqdm(np.arange(t0, tf, params['mapping']['ts'])):
             #     pose_gt_data[robots[j].name], robots[i].pose_est_data, robots[j].pose_est_data, xytheta=False)
             # print(Tij_gt)
             results[robots[i].name].update_from_tcaff_manager(t, robots[i].frame_align_filters[robots[j].name], xytheta_ij_gt)
+            if not np.any(np.isnan(robots[i].frame_align_filters[robots[j].name].T)):
+                T_oi_ri = robots[i].pose_est_data.T_WB(t)
+                T_oj_rj = robots[i-1].pose_est_data.T_WB(t)
+                T_oi_oj = robots[i].frame_align_filters[robots[j].name].T
+                T_ri_rj_est = np.linalg.inv(T_oi_ri) @ T_oi_oj @ T_oj_rj
+                # print(T_ri_rj_est)
+
+                try:
+                    T_w_ri = pose_gt_data[robots[i].name].T_WB(t)
+                    T_w_rj = pose_gt_data[robots[i-1].name].T_WB(t)
+                    T_ri_rj_gt = np.linalg.inv(T_w_ri) @ T_w_rj
+                    # print(T_ri_rj_gt)
+
+                    T_errs.append(np.linalg.inv(T_ri_rj_gt) @ T_ri_rj_est)
+                except:
+                    continue
+
+        for robot in robots:
+            if not printed_err[robot.name] and not np.isnan(np.nanmean(results[robot.name].errors_translation)):
+                print(f"initial translation error (m): {np.nanmean(results[robot.name].errors_translation)}")
+                print(f"initial rotation error (deg): {np.rad2deg(np.nanmean(results[robot.name].errors_rotation))}")
+                printed_err[robot.name] = True
+
+avg_trans_err = np.mean([np.linalg.norm(T_err[:2,3]) for T_err in T_errs])
+avg_rot_err = np.mean(np.abs([transform_2_xytheta(T_err)[2] for T_err in T_errs]))
+print(f"average translation error (m): {avg_trans_err}")
+print(f"average rotation error (deg): {np.rad2deg(avg_rot_err)}")
 
 
 
