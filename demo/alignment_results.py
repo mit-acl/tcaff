@@ -4,7 +4,7 @@ from typing import List
 import matplotlib.pyplot as plt
 from motlee.tcaff.se2_align_plot import se2_align_plot
 from motlee.tcaff.tcaff_manager import TCAFFManager
-from motlee.utils.transform import transform_2_xypsi
+from motlee.utils.transform import transform_2_xypsi, xypsi_2_transform
 
 @dataclass
 class AlignmentResults():
@@ -24,6 +24,9 @@ class AlignmentResults():
         assert len(self.fa) == self.n and len(self.gt) == self.n and len(self.est) == self.n, "All lists must be same length"
 
         self.no_align = (np.zeros(3)*np.nan).tolist()
+
+        self.errors_translation = []
+        self.errors_rotation = []
 
     def update_from_tcaff_manager(self, t: float, tcaff_manager: TCAFFManager, gt: List[float]=None):
         fa = [z.reshape(-1) for z in tcaff_manager.latest_zs]
@@ -46,6 +49,12 @@ class AlignmentResults():
         self.fa.append(fa)
         self.gt.append(gt)
         self.est.append(est)
+
+        T_diff = np.linalg.inv(xypsi_2_transform(*gt)) @ xypsi_2_transform(*est)
+        diff_x, diff_y, diff_th = transform_2_xypsi(T_diff)
+        self.errors_translation.append(np.linalg.norm([diff_x, diff_y]))
+        self.errors_rotation.append(np.abs(diff_th))
+
         self.n += 1
 
     def get_Tij_gt(self, t, pd_gt_0, pd_gt_1, pd_est_0, pd_est_1, xytheta=True):

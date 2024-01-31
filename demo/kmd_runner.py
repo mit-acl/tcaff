@@ -11,7 +11,7 @@ from motlee.utils.transform import xypsi_2_transform
 
 from robot_utils.robot_data.robot_data import NoDataNearTimeException
 from robot_utils.robot_data.pose_data import PoseData
-from robot_utils.transform import T_FLURDF, T_RDFFLU
+from robot_utils.transform import T_FLURDF, T_RDFFLU, transform
 from plot_utils import square_equal_aspect, plot_pose2d
 
 try:
@@ -50,6 +50,7 @@ params[robot_names[1]] = params['robot2']
 robots = []
 pose_gt_data = dict()
 pose_estimate_file_type = params['pose_estimate']['type']
+show_passing_time = 'show_passing_time' in params and params['show_passing_time']
 
 for name, other_name in zip(robot_names, robot_names[::-1]):
 
@@ -113,7 +114,8 @@ for name, other_name in zip(robot_names, robot_names[::-1]):
         wh_scale_diff=params['tcaff']['wh_scale_diff'],
         num_objs_req=params['tcaff']['num_objs_req'],
         max_opt_fraction=params['tcaff']['max_opt_fraction'],
-        steps_before_main_tree_deletion=params['tcaff']['steps_before_main_tree_deletion']
+        steps_before_main_tree_deletion=params['tcaff']['steps_before_main_tree_deletion'],
+        main_tree_obj_req=params['tcaff']['main_tree_obj_req']
     )
     
     fastsam3d_detections = DetectionData(
@@ -145,8 +147,15 @@ if params['synchronize_timing']:
     t0 = 0.0 #np.max([robot.pose_est_data.t0 for robot in robots])
     tf = np.min([params[name]['t_end'] - params[name]['t_start'] for name in robot_names])
 else:
-    t0 = np.max([robot.pose_est_data.t0 for robot in robots])
+    if 't_start' in params:
+        t0 = params['t_start']
+    else:
+        t0 = np.max([robot.pose_est_data.t0 for robot in robots]) + t_delay
     tf = np.min([robot.pose_est_data.tf for robot in robots])
+
+for robot in robots:
+    if 'start_odom_at_origin' in params and params['start_odom_at_origin']:
+        robot.pose_est_data.T_premultiply = np.linalg.inv(robot.pose_est_data.T_WB(t0))
 # for robot in robots:
 #     robot.pose_est_data.set_t0(t0)
 #     robot.fastsam3d_detections.set_t0(t0)
@@ -170,25 +179,46 @@ results = {robot.name: AlignmentResults() for robot in robots}
 #             objects.append([float(n.strip()) for n in l.strip().split(',')])
 #     objects = np.array(objects)
     
+# set up visualizer
+if args.viz:
+    xlim = [np.inf, -np.inf]
+    ylim = [np.inf, -np.inf]
+    for robot in robots:
+        for t in np.arange(t0, tf, params['mapping']['ts']):
+            T_WB = pose_gt_data[robot.name].T_WB(t)
+            xlim = [min(xlim[0], T_WB[0,3]), max(xlim[1], T_WB[0,3])]
+            ylim = [min(ylim[0], T_WB[1,3]), max(ylim[1], T_WB[1,3])]
+    xlim = [xlim[0] - 10.0, xlim[1] + 10.0]
+    ylim = [ylim[0] - 10.0, ylim[1] + 10.0]
+    
 # Run the data processor
 for t in tqdm(np.arange(t0, tf, params['mapping']['ts'])):
     motlee_data_processor.update(t)
     if motlee_data_processor.fa_updated:
         if args.viz:
             plt.gca().clear()
+            plt.gcf().set_size_inches(10.,10.)
             # plt.plot(objects[:,0], objects[:,1], 'k.')
             r0_map = robots[0].get_map()
             r1_map = robots[1].get_map()
+            Tij_gt = xypsi_2_transform(*results[robots[0].name].get_Tij_gt(t, pose_gt_data[robots[0].name], 
+                    pose_gt_data[robots[1].name], robots[0].pose_est_data, robots[1].pose_est_data))
+            if len(r0_map) > 0:
+                T = pose_gt_data[robots[0].name].T_WB(t) @ np.linalg.inv(robots[0].pose_est_data.T_WB(t))
+                r0_map.centroids = transform(T, r0_map.centroids)
+            if len(r1_map) > 0:
+                T = pose_gt_data[robots[1].name].T_WB(t) @ np.linalg.inv(robots[1].pose_est_data.T_WB(t))
+                r1_map.centroids = transform(T, r1_map.centroids)
             if len(r0_map) > 0:
                 plt.plot(r0_map.centroids[:,0], r0_map.centroids[:,1], 'r.')
             if len(r1_map) > 0:
                 plt.plot(r1_map.centroids[:,0], r1_map.centroids[:,1], 'b.')
             # square_equal_aspect()
             plt.gca().set_aspect('equal')
-            plt.xlim(-40, 40)
-            plt.ylim(-30, 30)
-            plot_pose2d(robots[0].pose_est_data.T_WB(t))
-            plot_pose2d(robots[1].pose_est_data.T_WB(t))
+            plt.xlim(xlim)
+            plt.ylim(ylim)
+            plot_pose2d(pose_gt_data[robots[0].name].T_WB(t))
+            plot_pose2d(pose_gt_data[robots[1].name].T_WB(t))
             plt.pause(0.01)
 
 
@@ -205,38 +235,50 @@ for t in tqdm(np.arange(t0, tf, params['mapping']['ts'])):
 
 
 
-# # Find rover passing time
-# min_dist = np.inf
-# min_dist_t = None
-# for t in np.arange(t0, tf, params['mapping']['ts']):
-#     T_WB1 = pose_gt_data[robots[0].name].T_WB(t)
-#     T_WB2 = pose_gt_data[robots[1].name].T_WB(t)
-#     dist = np.linalg.norm(T_WB1[:3,3] - T_WB2[:3,3])
-#     if dist < min_dist:
-#         min_dist = dist
-#         min_dist_t = t
+if show_passing_time:
+    # Find rover passing time
+    min_dist = np.inf
+    min_dist_t = None
+    for t in np.arange(t0, tf, params['mapping']['ts']):
+        T_WB1 = pose_gt_data[robots[0].name].T_WB(t)
+        T_WB2 = pose_gt_data[robots[1].name].T_WB(t)
+        dist = np.linalg.norm(T_WB1[:3,3] - T_WB2[:3,3])
+        if dist < min_dist:
+            min_dist = dist
+            min_dist_t = t
 
+    t = min_dist_t
+    print(f"Estimated pose of {robots[1].name} relative to {robots[0].name} at passing time")
+    T_oi_ri = robots[0].pose_est_data.T_WB(t)
+    T_oj_rj = robots[1].pose_est_data.T_WB(t)
+    T_oi_oj = robots[0].frame_align_filters[robots[1].name].T
+    if np.any(np.isnan(T_oi_oj)):
+        for est in results[robots[0].name].est[::-1]:
+            if not np.any(np.isnan(est)):
+                T_oi_oj = xypsi_2_transform(*est)
+                break
+    try: 
+        T_ri_rj = np.linalg.inv(T_oi_ri) @ T_oi_oj @ T_oj_rj
+        print(T_ri_rj)
+    except:
+        print("could not be found")
 
-# t = min_dist_t
-# print(f"Estimated pose of {robots[1].name} relative to {robots[0].name} at passing time")
-# T_oi_ri = robots[0].pose_est_data.T_WB(t)
-# T_oj_rj = robots[1].pose_est_data.T_WB(t)
-# T_oi_oj = robots[0].frame_align_filters[robots[1].name].T
-# try: 
-#     T_ri_rj = np.linalg.inv(T_oi_ri) @ T_oi_oj @ T_oj_rj
-#     print(T_ri_rj)
-# except:
-#     print("could not be found")
-
-# print(f"True pose of {robots[1].name} relative to {robots[0].name} at passing time")
-# T_w_ri = pose_gt_data[robots[0].name].T_WB(t)
-# T_w_rj = pose_gt_data[robots[1].name].T_WB(t)
-# T_ri_rj = np.linalg.inv(T_w_ri) @ T_w_rj
-# print(T_ri_rj)
+    print(f"True pose of {robots[1].name} relative to {robots[0].name} at passing time")
+    T_w_ri = pose_gt_data[robots[0].name].T_WB(t)
+    T_w_rj = pose_gt_data[robots[1].name].T_WB(t)
+    T_ri_rj = np.linalg.inv(T_w_ri) @ T_w_rj
+    print(T_ri_rj)
 
 for robot in robots:
+    try:
+        print(f"average translation error (m): {np.nanmean(results[robot.name].errors_translation)}")
+        print(f"average rotation error (deg): {np.rad2deg(np.nanmean(results[robot.name].errors_rotation))}")
+    except:
+        import ipdb; ipdb.set_trace()
+
     fig, ax = results[robot.name].plot()
-    # for axi in ax:
-    #     axi.plot([min_dist_t, min_dist_t], axi.get_ylim(), 'y--')
+    if show_passing_time:
+        for axi in ax:
+            axi.plot([min_dist_t, min_dist_t], axi.get_ylim(), 'y--')
     plt.show()
     

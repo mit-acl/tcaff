@@ -31,6 +31,7 @@ class TCAFFManager(FrameAlignFilter):
         num_objs_req=6,
         max_opt_fraction=.5,
         steps_before_main_tree_deletion=20,
+        main_tree_obj_req=5.0
     ):
         super().__init__()
 
@@ -50,7 +51,8 @@ class TCAFFManager(FrameAlignFilter):
             rho=rho,
             prob_no_match=prob_no_match, 
             exploring_branching_factor=exploring_branching_factor,
-            steps_before_main_tree_deletion=steps_before_main_tree_deletion
+            steps_before_main_tree_deletion=steps_before_main_tree_deletion,
+            main_tree_obj_req=main_tree_obj_req
         )
         self.R = setup_measurement_model()
 
@@ -143,7 +145,8 @@ def setup_frame_align_filter(
     max_leaves_exp=10,
     max_leaves_main=20,
     prob_no_match=.01,
-    steps_before_main_tree_deletion=20
+    steps_before_main_tree_deletion=20,
+    main_tree_obj_req=5.0
 ):
     ts = 1.0
     A = np.array([
@@ -213,7 +216,8 @@ def setup_frame_align_filter(
         max_branching_factor=4, max_tree_leaves=max_leaves_main)
     frame_align_filter = TCAFF(z2x=z2x_func, K=window_len, create_exploring_tree=create_exploring_tree, 
                                create_main_tree=create_main_tree, rho=rho, 
-                               steps_before_main_tree_deletion=steps_before_main_tree_deletion)
+                               steps_before_main_tree_deletion=steps_before_main_tree_deletion,
+                               main_tree_obj_req=main_tree_obj_req)
     return frame_align_filter
 
 def setup_measurement_model():

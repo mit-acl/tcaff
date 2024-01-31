@@ -23,7 +23,7 @@ class ObjectMap():
         widths = self.widths.tolist() if self.widths is not None else [None for _ in range(self._n)]
         heights = self.heights.tolist() if self.heights is not None else [None for _ in range(self._n)]
         ages = self.ages.tolist() if self.ages is not None else [None for _ in range(self._n)]
-        yield from [Object(centroid, width, height, age) for (centroid, width, height, age) \
+        yield from [Object(np.array(centroid), width, height, age) for (centroid, width, height, age) \
                     in zip(centroids, widths, heights, ages)]
     
     def plot2d(self, ax=None, **kwargs):
@@ -33,6 +33,20 @@ class ObjectMap():
             circ = plt.Circle(object.centroid[:2], object.width, fill=False, **kwargs)
             ax.add_artist(circ)
         return ax
+    
+    def as_array(self):
+        l = []
+        for object in self:
+            assert object.centroid is not None
+            new_item = object.centroid.reshape(-1).tolist()
+            if object.width is not None:
+                new_item += [object.width]
+            if object.height is not None:
+                new_item += [object.height]
+            if object.age is not None:
+                new_item += [object.age]
+            l.append(new_item)
+        return np.array(l)
 
 @dataclass
 class Object():

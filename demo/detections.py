@@ -122,8 +122,10 @@ class DetectionData(RobotData, Detections):
         
         Rs = np.array([R_SHOULD_BE_PARAM for z in zs])
 
-        Rs = np.delete(Rs, np.bitwise_or(zs[:,0] > 10, zs[:,0] < 0.), axis=0) # TODO: < 1.5???
-        zs = np.delete(zs, np.bitwise_or(zs[:,0] > 10, zs[:,0] < 0.), axis=0)
+        # Rs = np.delete(Rs, np.bitwise_or(zs[:,0] > 15, zs[:,0] < 0.), axis=0) # TODO: < 1.5???
+        # zs = np.delete(zs, np.bitwise_or(zs[:,0] > 15, zs[:,0] < 0.), axis=0)
+        Rs = np.delete(Rs, np.bitwise_or(zs[:,0] > 10., zs[:,0] < 1.5), axis=0) # TODO: < 1.5???
+        zs = np.delete(zs, np.bitwise_or(zs[:,0] > 10., zs[:,0] < 1.5), axis=0)
     
         return zs, Rs
     

@@ -42,6 +42,7 @@ robot2:
     - 1.0
 
 synchronize_timing: false
+t_start: 1705675988
 
 pose_estimate:
   root: "/home/masonbp/data/motlee_jan_2024/00"
@@ -67,7 +68,7 @@ fastsam3d_data:
 mapping:
   dim: 5
   tau: 2.
-  kappa: 150
+  kappa: 150 # 100
   nu: 3
   Q_el: .25
   P0_el: .25
@@ -81,7 +82,7 @@ mapping:
 tcaff:
   prob_no_match: .001
   exploring_branching_factor: 2
-  window_len: 5
+  window_len: 10
   max_branch_exp: 50
   max_branch_main: 200
   rho: 1.1
@@ -90,8 +91,12 @@ tcaff:
   clipper_mult_repeats: 4
   max_obj_width: 2.5
   h_diff: 0.1
-  wh_scale_diff: 1.4
+  wh_scale_diff: 1.5
+  # max_obj_width: 1.
+  # h_diff: 1.
+  # wh_scale_diff: 4.
   num_objs_req: 5
   ts: 1.
   max_opt_fraction: .75
   steps_before_main_tree_deletion: 5
+  main_tree_obj_req: 11.

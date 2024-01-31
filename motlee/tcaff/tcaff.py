@@ -3,7 +3,7 @@ from copy import deepcopy
 
 # MAIN_TREE_OBJ_REQ = 6.5 # doesn't work for 4 8 currently
 # MAIN_TREE_OBJ_REQ = 5.18
-MAIN_TREE_OBJ_REQ = 5.18
+# MAIN_TREE_OBJ_REQ = 5.18
 STOP_EXPLORING_TREES_AFTER_MAIN_TREE = False
 
 class TCAFF():
@@ -16,6 +16,7 @@ class TCAFF():
         create_main_tree,
         rho=3.,
         steps_before_main_tree_deletion=20,
+        main_tree_obj_req=5.0
     ):        
         self.z2x = z2x
         self.k = 0 # depth
@@ -29,6 +30,7 @@ class TCAFF():
         self.create_main_tree = create_main_tree
         self.steps_with_no_meas = 0
         self.steps_before_main_tree_deletion = steps_before_main_tree_deletion
+        self.main_tree_obj_req = main_tree_obj_req
         
     def update(self, zs, Rs):
         # if len(zs) == 0 and len(self.exploring_trees) == 0:
@@ -106,10 +108,6 @@ class TCAFF():
     def main_tree_condition(self):
         if self.main_tree is not None and STOP_EXPLORING_TREES_AFTER_MAIN_TREE:
             return False
-        leaf_opt = self.get_optimal_leaf()
-        if leaf_opt is None:
-            return False
-        obj_opt = leaf_opt.cumulative_objective()
         if self.main_tree is not None:
             if np.all([node.z is None for node in self.main_tree.get_optimal_ancestral_line()]):
                 self.steps_with_no_meas += 1
@@ -119,6 +117,10 @@ class TCAFF():
             #     self.steps_with_no_meas = 0
             #     return True
             return False
+        leaf_opt = self.get_optimal_leaf()
+        if leaf_opt is None:
+            return False
+        obj_opt = leaf_opt.cumulative_objective()
             # return False
             # return obj_opt < -2 and self.main_tree.optimal.cumulative_objective() > 5
         # tree_opt = self.get_optimal_tree()
@@ -129,7 +131,7 @@ class TCAFF():
         #     num_non_meas = [node.z for node in tree_opt.get_optimal_ancestral_line() if node.z is None]
         #     return len(num_meas) > len(num_non_meas)
             
-        return obj_opt < MAIN_TREE_OBJ_REQ
+        return obj_opt < self.main_tree_obj_req
         # return self.rho * obj_opt < np.min(obj_all) and obj_opt < MAIN_TREE_OBJ_REQ
         
         obj_all = [opt.cumulative_objective() for opt in [tree.optimal for tree in self.exploring_trees]]
