@@ -99,6 +99,10 @@ class TCAFF():
                                 
             if self.main_tree is not None:
                 self.main_tree.update(zs, Rs)
+                if np.all([node.z is None for node in self.main_tree.get_optimal_ancestral_line()]):
+                    self.steps_with_no_meas += 1
+                else:
+                    self.steps_with_no_meas = 0
                 # if np.all([node.z is None for node in self.main_tree.get_optimal_ancestral_line()]):
                 #     self.main_tree = None
                         
@@ -108,17 +112,8 @@ class TCAFF():
         self.main_tree = None
         
     def main_tree_condition(self):
-        if self.main_tree is not None and STOP_EXPLORING_TREES_AFTER_MAIN_TREE:
-            return False
         if self.main_tree is not None:
-            if np.all([node.z is None for node in self.main_tree.get_optimal_ancestral_line()]):
-                self.steps_with_no_meas += 1
-            else:
-                self.steps_with_no_meas = 0
-            # if obj_opt < MAIN_TREE_OBJ_REQ and self.steps_with_no_meas > self.steps_before_main_tree_deletion:
-            #     self.steps_with_no_meas = 0
-            #     return True
-            return False
+            return False    
         leaf_opt = self.get_optimal_leaf()
         if leaf_opt is None:
             return False
