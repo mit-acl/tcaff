@@ -60,6 +60,7 @@ class TCAFFManager(FrameAlignFilter):
         self.h_diff = h_diff
         self.latest_zs = []
         self.max_opt_fraction = max_opt_fraction
+        self.latest_fa_solutions = []
     
     def update(self, ego_map: ObjectMap, other_map: ObjectMap):
 
@@ -85,6 +86,7 @@ class TCAFFManager(FrameAlignFilter):
             return self.faf.main_tree.optimal.P[:3,:3]
 
     def get_frame_align_measurements(self, ego_map: ObjectMap, other_map: ObjectMap):
+        self.latest_fa_solutions = []
         # Solution filtering and data setup
         if len(ego_map) == 0 or len(other_map) == 0:
             return np.array([])
@@ -108,6 +110,7 @@ class TCAFFManager(FrameAlignFilter):
             for sol in sols:
                 # filter out alignment failures and reflections
                 if sol.success and np.allclose(sol.transform[0,0], sol.transform[1,1]) and sol.objective_score > self.max_opt_fraction*max_opt:
+                    self.latest_fa_solutions.append(sol)
                     align.append(np.array(transform_2_xypsi(sol.transform)))
                     align_obj.append(sol.objective_score)
                 else:
@@ -137,6 +140,9 @@ class TCAFFManager(FrameAlignFilter):
                 
         A_put = np.delete(A_all, to_delete, axis=0)
         return A_put
+
+def z2x_func(z): 
+    return np.array([[z.item(0), z.item(1), z.item(2)]]).T
 
 def setup_frame_align_filter(
     window_len=5,
@@ -180,13 +186,12 @@ def setup_frame_align_filter(
     n = A.shape[0]
     p = H.shape[0]
     
-    z2x_func = lambda z : np.array([[z.item(0), 0., z.item(1), 0., z.item(2), 0.]]).T
+    # z2x_func = lambda z : np.array([[z.item(0), 0., z.item(1), 0., z.item(2), 0.]]).T
 
     A = np.eye(3)
     H = np.eye(3)
     Q = np.diag([.1, .1, .5*np.pi/180])*SCALING
     P0 = np.diag([.5, .5, 2*np.pi/180])*SCALING
-    z2x_func = lambda z : np.array([[z.item(0), z.item(1), z.item(2)]]).T
     
     KMD = False
     if KMD:
@@ -199,21 +204,23 @@ def setup_frame_align_filter(
         n = A.shape[0]
         p = H.shape[0]
         
-        z2x_func = lambda z : np.array([[z.item(0), 0., z.item(1), 0., z.item(2), 0.]]).T
+        # z2x_func = lambda z : np.array([[z.item(0), 0., z.item(1), 0., z.item(2), 0.]]).T
 
         A = np.eye(3)
         H = np.eye(3)
         Q = np.diag([.5, .5, 2.5*np.pi/180])
         P0 = np.diag([1, 1., 5*np.pi/180])
-        z2x_func = lambda z : np.array([[z.item(0), z.item(1), z.item(2)]]).T
 
     # frame_align_filter_manager = FrameAlignFilter(P0=P0, A=A, H=H, Q=Q, window_len_mini_filter=window_len_mini_filter, window_len=window_len, z2x_func=z2x_func, max_branching_factor_mini_filter=2, prob_no_match=.01)
-    create_exploring_tree = lambda xhat0 : TCAFFTree(
-        xhat0=xhat0, P0=P0, A=A, H=H, Q=Q, window_len=window_len, prob_no_match=prob_no_match, 
-        max_branching_factor=exploring_branching_factor, max_tree_leaves=max_leaves_exp)
-    create_main_tree = lambda xhat0 : TCAFFTree(
-        xhat0=xhat0, P0=P0, A=A, H=H, Q=Q, window_len=window_len, prob_no_match=prob_no_match, 
-        max_branching_factor=4, max_tree_leaves=max_leaves_main)
+    # TODO: these local functions are not picle-able
+    def create_exploring_tree(xhat0):
+        return TCAFFTree(
+            xhat0=xhat0, P0=P0, A=A, H=H, Q=Q, window_len=window_len, prob_no_match=prob_no_match, 
+            max_branching_factor=exploring_branching_factor, max_tree_leaves=max_leaves_exp)
+    def create_main_tree(xhat0): 
+        return TCAFFTree(
+            xhat0=xhat0, P0=P0, A=A, H=H, Q=Q, window_len=window_len, prob_no_match=prob_no_match, 
+            max_branching_factor=4, max_tree_leaves=max_leaves_main)
     frame_align_filter = TCAFF(z2x=z2x_func, K=window_len, create_exploring_tree=create_exploring_tree, 
                                create_main_tree=create_main_tree, rho=rho, 
                                steps_before_main_tree_deletion=steps_before_main_tree_deletion,
