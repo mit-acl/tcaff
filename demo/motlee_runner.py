@@ -283,7 +283,11 @@ if args.viz:
 # Run the data processor
 T_errs = []
 printed_err = {robot.name: False for robot in robots}
-for t in tqdm(np.arange(t0, tf, params['mapping']['ts'])):
+
+print(f"initial relative pose:")
+print(transform_2_xytheta(np.linalg.inv(pose_gt_data[robots[0].name].T_WB(t0)) @ pose_gt_data[robots[1].name].T_WB(t0)))
+
+for t in tqdm(np.arange(t0, tf, params['mapping']['ts']/10)):
     motlee_data_processor.update(t)
     if motlee_data_processor.fa_updated:
         if args.viz:

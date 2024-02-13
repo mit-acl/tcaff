@@ -35,7 +35,7 @@ mapping:
   dim: 5
   tau: 2.
   # kappa: 300
-  kappa: 150
+  kappa: 200
   nu: 3
   Q_el: .25
   P0_el: .25
@@ -51,7 +51,7 @@ mapping:
 tcaff:
   prob_no_match: .001
   exploring_branching_factor: 2
-  window_len: 5
+  window_len: 8
   max_branch_exp: 50
   max_branch_main: 200
   rho: 1.1
@@ -68,4 +68,4 @@ tcaff:
   ts: 1.
   max_opt_fraction: .75
   steps_before_main_tree_deletion: 5
-  main_tree_obj_req: 6.
+  main_tree_obj_req: 8.
