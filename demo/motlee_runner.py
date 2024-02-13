@@ -34,27 +34,33 @@ except:
     from rover_artist import RoverArtist
 
 def plot_align_measure(map1: ObjectMap, map2: ObjectMap, align_solution: FrameAlignSolution, 
-                       Toiri: np.ndarray, Tojrj: np.ndarray, ax: plt.Axes = None):
+                       Twoi: np.array, Toiri: np.ndarray, Tojrj: np.ndarray, ax: plt.Axes = None):
+    centroids = False
+    circles = True
+                       
     if ax is None:
         ax = plt.gca()
 
-    rover_format = {'scale': 2.0}
-    rover_colors = ['red', 'violet']
+    rover_format = {'scale': 2.5}
+    rover_colors = ['#a45ee5', '#DC143C']
+    # map_colors = ['xkcd:azure', 'xkcd:pumpkin']
+    map_colors = ['xkcd:purple', 'xkcd:deep red']
         
     Toioj = align_solution.transform
-    map2.centroids = transform(Toioj, map2.centroids)
-    map1.plot2d(ax, color='xkcd:azure', max_obj_width=1.)
+    map2.centroids = transform(Twoi @ Toioj, map2.centroids)
+    map1.centroids = transform(Twoi, map1.centroids)
+    map1.plot2d(ax, color=map_colors[0], max_obj_width=1., circles=circles, centroids=centroids)
 
     for pair in align_solution.associated_objs:
         i, j = pair
         ax.plot([map1.centroids[i,0], map2.centroids[j,0]], [map1.centroids[i,1], map2.centroids[j,1]], 'lawngreen', linewidth=3.)
-    map2.plot2d(ax, color='xkcd:pumpkin', max_obj_width=1.)
+    map2.plot2d(ax, color=map_colors[1], max_obj_width=1., circles=circles, centroids=centroids)
 
     rover = RoverArtist(fig, ax, rover_color=rover_colors[0], **rover_format)
-    rover.draw(T3d_2_T2d(Toiri))
+    rover.draw(T3d_2_T2d(Twoi @ Toiri))
 
     rover = RoverArtist(fig, ax, rover_color=rover_colors[1], **rover_format)
-    rover.draw(T3d_2_T2d(Toioj @ Tojrj))
+    rover.draw(T3d_2_T2d(Twoi @ Toioj @ Tojrj))
     
     xmin = np.inf; xmax = -np.inf; ymin = np.inf; ymax = -np.inf
     for obj in map1 + map2:
@@ -122,13 +128,19 @@ else:
         pose_data = dict()
         for pose_type in ['pose_estimate', 'pose_gt']:
             if params[pose_type]['type'] == 'bag':
+                if 'frame' in params[pose_type] and params[pose_type]['frame'] == 'RDF':
+                    T_postmultiply = T_RDFFLU
+                elif 'T_postmultiply' in params[pose_type]:
+                    T_postmultiply = np.linalg.inv(np.array(params[pose_type]['T_postmultiply'][name]).reshape((4,4)))
+                else:
+                    T_postmultiply = None
                 pose_data[pose_type] = PoseData(
                     data_file=f"{params[pose_type]['root']}/{name}.bag",
                     file_type='bag',
                     topic=f"/{name}/{params[pose_type]['topic']}",
                     time_tol=10.,
                     interp=True,
-                    T_postmultiply=T_RDFFLU if params[pose_type]['frame'] == 'RDF' else None,
+                    T_postmultiply=T_postmultiply,
                     T_premultiply=xypsi_2_transform(*params[name]['premultiply'])
                 )
             elif params[pose_type]['type'] == 'csv':
@@ -223,7 +235,7 @@ else:
     if 't_start' in params:
         t0 = params['t_start']
     else:
-        t0 = np.max([robot.pose_est_data.t0 for robot in robots]) + t_delay
+        t0 = np.max([robot.pose_est_data.t0 for robot in robots])
     tf = np.min([robot.pose_est_data.tf for robot in robots])
 
 for robot in robots:
@@ -307,10 +319,11 @@ for t in tqdm(np.arange(t0, tf, params['mapping']['ts'])):
                 fig, ax = plt.subplots()
                 ax = plot_align_measure(robots[0].get_map(), robots[1].get_map(), 
                                         sol,
+                                        pose_gt_data[robots[0].name].T_WB(t) @ np.linalg.inv(robots[0].pose_est_data.T_WB(t)),
                                         robots[0].pose_est_data.T_WB(t), 
                                         robots[1].pose_est_data.T_WB(t), 
                                         ax)
-                plt.savefig(filename)
+                plt.savefig(filename, transparent=True, dpi=400)
                 plt.close(fig)
 
         for (i, j) in zip([0,1], [1,0]):

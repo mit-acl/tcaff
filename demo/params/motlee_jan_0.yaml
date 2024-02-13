@@ -1,4 +1,3 @@
-# Description: Just south of MIT medical, robots traveling oposite directions
 robot1:
   name: "RR04"
   premultiply: [0., 0., 0.]

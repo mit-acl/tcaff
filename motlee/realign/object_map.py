@@ -26,13 +26,16 @@ class ObjectMap():
         yield from [Object(np.array(centroid), width, height, age) for (centroid, width, height, age) \
                     in zip(centroids, widths, heights, ages)]
     
-    def plot2d(self, ax=None, max_obj_width=np.inf, **kwargs):
+    def plot2d(self, ax=None, max_obj_width=np.inf, circles=True, centroids=False, **kwargs):
         if ax is None:
             ax = plt.gca()
         for object in self:
             if object.width > max_obj_width: continue
-            circ = plt.Circle(object.centroid[:2], object.width, fill=False, **kwargs)
-            ax.add_artist(circ)
+            if circles:
+                circ = plt.Circle(object.centroid[:2], object.width, fill=False, **kwargs)
+                ax.add_artist(circ)
+            if centroids:
+                ax.scatter(*object.centroid[:2], **kwargs)
         return ax
     
     def as_array(self):
