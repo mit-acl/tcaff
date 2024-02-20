@@ -71,7 +71,7 @@ class AlignmentResults():
         else:
             return T
 
-    def plot(self):
+    def plot(self, zero_time=True, line_kwargs={}, marker_kwargs={}, figax=None):
         if self.m == 0:
             self.m = 1
         for i in range(len(self.fa)):
@@ -79,9 +79,11 @@ class AlignmentResults():
                 self.fa[i] += [self.no_align]*(self.m - len(self.fa[i]))
 
         times = np.array(self.times)
+        if zero_time:
+            times -= times[0]
         # import ipdb; ipdb.set_trace()
         fa = np.array(self.fa).reshape((self.n, self.m, 3))
         gt = np.array(self.gt)
         est = np.array(self.est)
 
-        return se2_align_plot(times, fa, gt, est)
+        return se2_align_plot(times, fa, gt, est, figax=figax, line_kwargs=line_kwargs, marker_kwargs=marker_kwargs)

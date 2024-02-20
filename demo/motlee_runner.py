@@ -92,12 +92,16 @@ parser.add_argument("--viz", "-v", action="store_true")
 parser.add_argument("--save-aligns", type=str, default=None, help="Directory to save alignment results to")
 parser.add_argument("--save-pickle", "-s", type=str, default=None, help="Save data to pickle file for faster data loading")
 parser.add_argument("--load-pickle", "-l", type=str, default=None, help="Load data from pickle file for faster data loading")
+parser.add_argument("--output", "-o", type=str, default=None, help="Output file for plotting results")
 
 args = parser.parse_args()
 
 ###################################################
 #                      Setup                      #
 ###################################################
+
+plt.style.use('/home/masonbp/computer/python/matplotlib/publication.mplstyle')
+plt.rcParams.update({'font.size': 20})
 
 # Create save aligns directory
 if args.save_aligns is not None:
@@ -413,9 +417,22 @@ for robot in robots:
     except:
         import ipdb; ipdb.set_trace()
 
-    fig, ax = results[robot.name].plot()
+    fig, ax = plt.subplots(3, 1, figsize=(8,10))
+    fig, ax = results[robot.name].plot(line_kwargs={'linewidth': 2.5}, figax=(fig, ax))
     if show_passing_time:
         for axi in ax:
             axi.plot([min_dist_t, min_dist_t], axi.get_ylim(), 'y--')
-    plt.show()
+    fig.subplots_adjust(
+        top=0.99,#0.92,
+        bottom=0.08,#0.01,
+        left=0.1,#0.01,
+        right=0.99)
+    if args.output is not None:
+        file_extension = args.output.split('.')[-1]
+        output_file = f"{args.output[:-(len(file_extension)+1)]}_{robot.name}.{file_extension}"
+        plt.savefig(output_file, transparent=True, dpi=400)
+        import ipdb; ipdb.set_trace()
+    else:
+        plt.show()
+        
     
