@@ -39,8 +39,7 @@ class Tree():
         self.optimal = min_node
         
         # prune
-        if self.tree_depth > self.window_len:
-            self.prune()
+        self.prune()
                   
             
         return self.optimal.xhat
@@ -110,32 +109,36 @@ class Tree():
         self.tree_depth += 1
         
     def prune(self):
-        node = self.optimal
-        while node not in self.hyp_root.children:
-            node = node.parent
-        new_root = node
-    
-        leaves_to_prune = []
-        for node in self.hyp_leaves:
-            parent_node = node.parent
-            while parent_node != new_root and parent_node != self.hyp_root:
-                parent_node = parent_node.parent
-            if parent_node == new_root:
-                continue
-            else:
-                assert parent_node == self.hyp_root
-                leaves_to_prune.append(node)
+        # move window
+        if self.tree_depth > self.window_len:
+            node = self.optimal
+            while node not in self.hyp_root.children:
+                node = node.parent
+            new_root = node
         
-        for node in leaves_to_prune:
-            self.hyp_leaves.remove(node)
+            leaves_to_prune = []
+            for node in self.hyp_leaves:
+                parent_node = node.parent
+                while parent_node != new_root and parent_node != self.hyp_root:
+                    parent_node = parent_node.parent
+                if parent_node == new_root:
+                    continue
+                else:
+                    assert parent_node == self.hyp_root
+                    leaves_to_prune.append(node)
             
-        old_root = self.hyp_root
-        self.hyp_root = new_root
-        self.hyp_root.parent = None
-        for node in self.tree_as_list():
-            node.objective_sum -= old_root.objective
-            if old_root.z is not None:
-                node.measurements_in_hyp -= 1
+            for node in leaves_to_prune:
+                self.hyp_leaves.remove(node)
+                
+            old_root = self.hyp_root
+            self.hyp_root = new_root
+            self.hyp_root.parent = None
+            for node in self.tree_as_list():
+                node.objective_sum -= old_root.objective
+                if old_root.z is not None:
+                    node.measurements_in_hyp -= 1
+
+            self.tree_depth -= 1
                 
         # prune to max tree leaves
         objectives = [node.cumulative_objective() for node in self.hyp_leaves]
@@ -143,8 +146,6 @@ class Tree():
         leaves_to_prune = sorted_leaves[self.max_tree_leaves:]
         for node in leaves_to_prune:
             self.hyp_leaves.remove(node)
-                
-        self.tree_depth -= 1
         
     def tree_as_list(self):
         tree_as_list = []

@@ -65,7 +65,7 @@ def se2_align_plot(t, fa, gt=None, est=None, figax=None, line_kwargs={}, marker_
             ax[i].plot(t, est[:,2*i]*mult, color='red', label='_nolegend_', **line_kwargs)
         # ax[i].plot(t, z_sel[:,i], color='red')
     [ax_i.grid(True) for ax_i in ax]
-    [ax_i.set_ylabel(lb) for ax_i, lb in zip(ax, ['x (m)', 'y (m)', 'theta (deg)'])]
+    [ax_i.set_ylabel(lb) for ax_i, lb in zip(ax, ['x (m)', 'y (m)', r'$\theta$ (deg)'])]
     ax[2].set_xlabel("time (s)")
 
     for i in range(3):
