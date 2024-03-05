@@ -71,6 +71,9 @@ def pos_quat_to_transform(pos, quat):
 
 def T3d_2_T2d(T3d):
     T2d = np.delete(np.delete(T3d, 2, axis=0), 2, axis=1)
+    R_intermediate = np.eye(3)
+    R_intermediate[:2,:2] = T3d[:2,:2]
+    T2d[:2,:2] = Rot.from_matrix(R_intermediate).as_matrix()[:2,:2]
     return T2d
 
 def T2d_2_T3d(T2d):

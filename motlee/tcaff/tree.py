@@ -83,6 +83,7 @@ class Tree():
                         
             else:
                 for z, R in zip(zs, Rs):
+                    Hxhat = node.H @ node.xhat
                     if self.wrap_theta_idx_2:
                         while Hxhat.item(2) - z.item(2) > np.pi:
                             z[2] += 2*np.pi
