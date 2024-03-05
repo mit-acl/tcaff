@@ -31,9 +31,9 @@ class MOTLEEDataProcessor():
         self.fa_updated = False
 
     def update(self, t: float):
-        run_mot = self.perform_mot and t - self.last_mot_t >= self.mot_ts
-        run_mapping = t - self.last_mapping_t >= self.mapping_ts
-        run_frame_align = t - self.last_fa_t >= self.frame_align_ts
+        run_mot = self.perform_mot and np.round(t - self.last_mot_t, 4) >= self.mot_ts
+        run_mapping = np.round(t - self.last_mapping_t, 4) >= self.mapping_ts
+        run_frame_align = np.round(t - self.last_fa_t, 4) >= self.frame_align_ts
 
         # Update each robots local map
         if run_mapping:

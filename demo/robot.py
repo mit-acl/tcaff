@@ -55,7 +55,10 @@ class Robot():
 
     def update_mapping(self, t: float):
         dim = self.mapper.dim_association
-        zs, Rs = self.fastsam3d_detections.detections(t)
+        try:
+            zs, Rs = self.fastsam3d_detections.detections(t)
+        except:
+            return # no fastsam detections available
         try:
             t_closest = self.fastsam3d_detections.get_vals(self.fastsam3d_detections.times, t)
         except:
