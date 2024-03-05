@@ -4,12 +4,6 @@ from scipy.optimize import linear_sum_assignment
 from copy import deepcopy
 
 from motlee.mot.track import Track
-
-NUM_CAMS = 4
-COV_MAG = .01
-USE_NLML = True
-MERGE_RANGE_M = .15
-
 class MultiObjectTracker():
 
     def __init__(
@@ -23,7 +17,9 @@ class MultiObjectTracker():
         kappa=10,
         nu=3,
         track_storage_size=1,
-        dim_association=2
+        dim_association=2,
+        merge_range_m=0.0,
+        use_nlml=True
     ):
         
         """_summary_
@@ -60,7 +56,7 @@ class MultiObjectTracker():
         self.old_tracks = []
         self.next_available_id = 0
         self.n_meas_to_init_track = nu
-        self.merge_range_m = MERGE_RANGE_M
+        self.merge_range_m = merge_range_m
         
         self.camera_id = camera_id
         self.track_mapping = dict()
@@ -68,7 +64,6 @@ class MultiObjectTracker():
         self.inconsistencies = 0
         self.groups_by_id = []
         self.recent_detection_list = []
-        self.cov = np.eye(4) * COV_MAG
         for i in range(50):
             self.recent_detection_list.append(None)
             
@@ -78,6 +73,7 @@ class MultiObjectTracker():
         self.neighbor_frame_align = {c: None for c in self.connected_cams}
         self.neighbor_frame_align_cov = {c: None for c in self.connected_cams}
         self.MDs = []
+        self.use_nlml = use_nlml
 
     def local_data_association(self, Zs, feature_vecs, Rs):
         self.MDs = []
@@ -116,10 +112,11 @@ class MultiObjectTracker():
                 self.MDs.append(d)
                 
                 # Geometry similarity value
+                if self.use_nlml:
+                    d = (self.dim_association*np.log(2*np.pi) + d**2 + np.log(np.linalg.det(V)))
+                    
                 if not d < self.Tau_LDA:
                     s_d = large_num
-                elif USE_NLML:
-                    s_d = 1/self.alpha*(self.dim_association*np.log(2*np.pi) + d**2 + np.log(np.linalg.det(V)))
                 else:
                     s_d = 1/self.alpha*d
                 if np.isnan(s_d):
