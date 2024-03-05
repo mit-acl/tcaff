@@ -100,8 +100,8 @@ fastsam3d_data:
 
 mapping:
   dim: 5
-  tau: 2.
-  kappa: 150 # 100
+  tau: 10.
+  kappa: 200 # 100
   nu: 3
   Q_el: .25
   P0_el: .25
@@ -112,7 +112,7 @@ mapping:
   P0_el_h: .25
   ts: .1
   zmin: 0.
-  zmax: 10.
+  zmax: 15.
 
 tcaff:
   prob_no_match: .001
@@ -133,5 +133,5 @@ tcaff:
   num_objs_req: 5
   ts: 1.
   max_opt_fraction: .75
-  steps_before_main_tree_deletion: 5
+  steps_before_main_tree_deletion: 20
   main_tree_obj_req: 9.

@@ -66,8 +66,8 @@ fastsam3d_data:
 
 mapping:
   dim: 5
-  tau: 2.
-  kappa: 150 # 100
+  tau: 10.
+  kappa: 200 # 100
   nu: 3
   Q_el: .25
   P0_el: .25
@@ -91,13 +91,13 @@ tcaff:
   clipper_sigma: .2
   clipper_mult_repeats: 4
   max_obj_width: 2.5
-  h_diff: 0.15
-  wh_scale_diff: 1.7
+  h_diff: 0.12
+  wh_scale_diff: 1.5
   # max_obj_width: 1.
   # h_diff: 1.
   # wh_scale_diff: 4.
   num_objs_req: 5
   ts: 1.
-  max_opt_fraction: .75
+  max_opt_fraction: .5
   steps_before_main_tree_deletion: 5
   main_tree_obj_req: 8.
