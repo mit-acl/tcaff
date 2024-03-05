@@ -51,7 +51,10 @@ class AlignmentResults():
         self.est.append(est)
 
         T_diff = np.linalg.inv(xypsi_2_transform(*gt)) @ xypsi_2_transform(*est)
-        diff_x, diff_y, diff_th = transform_2_xypsi(T_diff)
+        if np.any(np.isnan(T_diff)):
+            diff_x, diff_y, diff_th = np.nan, np.nan, np.nan
+        else:
+            diff_x, diff_y, diff_th = transform_2_xypsi(T_diff)
         self.errors_translation.append(np.linalg.norm([diff_x, diff_y]))
         self.errors_rotation.append(np.abs(diff_th))
 
