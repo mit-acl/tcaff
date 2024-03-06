@@ -13,9 +13,13 @@ def transform_vec(T, vec):
 # TODO: rename stacked_axis and default to 0
 # TODO: handle tensors
 def transform(T, vecs, stacked_axis=1):
+    if len(vecs) == 0:
+        return vecs
     if len(vecs.reshape(-1)) == 2 or len(vecs.reshape(-1)) == 3:
         return transform_vec(T, vecs)
     vecs_horz_stacked = vecs if stacked_axis==1 else vecs.T
+    if vecs_horz_stacked.shape[1] == 0:
+        return vecs
     zero_padded_vecs = np.vstack(
         [vecs_horz_stacked, np.zeros((T.shape[0] - 1 - vecs_horz_stacked.shape[0], vecs_horz_stacked.shape[1]))]
     )
@@ -56,11 +60,12 @@ def transform_2_xypsi(T):
     psi = Rot.from_matrix(T[:3,:3]).as_euler('xyz', degrees=False)[2]
     return x, y, psi
 
-def xypsi_2_transform(x, y, psi):
-    T = np.eye(4)
+def xypsi_2_transform(x, y, psi, dim=3):
+    assert dim == 2 or dim == 3
+    T = np.eye(dim+1)
     T[:2,:2] = Rot.from_euler('xyz', [0, 0, psi]).as_matrix()[:2,:2]
-    T[0,3] = x
-    T[1,3] = y
+    T[0,dim] = x
+    T[1,dim] = y
     return T
 
 def pos_quat_to_transform(pos, quat):

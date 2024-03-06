@@ -137,7 +137,7 @@ class FrameAligner():
             T_init_guess (numpy.array, shape(4,4), optional): Initial guess transform. Defaults to None.
 
         Returns:
-            numpy.array, shape(4,4): 3D transform that aligns objs2 with objs2
+            numpy.array, shape(4,4): 3D transform that aligns objs2 with objs1
             float: residual of alignment
             int: number of corresponding objects used for alignment
         """
