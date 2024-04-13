@@ -53,9 +53,10 @@ def plot_align_measure(map1: ObjectMap, map2: ObjectMap, align_solution: FrameAl
 
     for pair in align_solution.associated_objs:
         i, j = pair
-        ax.plot([map1.centroids[i,0], map2.centroids[j,0]], [map1.centroids[i,1], map2.centroids[j,1]], 'lawngreen', linewidth=3.)
+        ax.plot([map1.centroids[i,0], map2.centroids[j,0]], [map1.centroids[i,1], map2.centroids[j,1]], 'cyan', linewidth=3.)
     map2.plot2d(ax, color=map_colors[1], max_obj_width=1., circles=circles, centroids=centroids)
 
+    fig = ax.get_figure()
     rover = RoverArtist(fig, ax, rover_color=rover_colors[0], **rover_format)
     rover.draw(T3d_2_T2d(Twoi @ Toiri))
 
@@ -101,7 +102,7 @@ def main(args):
     ###################################################
 
     plt.style.use('/home/masonbp/computer/python/matplotlib/publication.mplstyle')
-    plt.rcParams.update({'font.size': 20})
+    # plt.rcParams.update({'font.size': 20})
 
     # Create save aligns directory
     if args.save_aligns is not None:
@@ -246,7 +247,10 @@ def main(args):
             t0 = params['t_start']
         else:
             t0 = np.max([robot.pose_est_data.t0 for robot in robots])
-        tf = np.min([robot.pose_est_data.tf for robot in robots])
+        if 't_duration' in params:
+            tf = t0 + params['t_duration']
+        else:
+            tf = np.min([robot.pose_est_data.tf for robot in robots])
 
     for robot in robots:
         if 'start_odom_at_origin' in params and params['start_odom_at_origin']:
@@ -460,7 +464,9 @@ def main(args):
             print(f"average rotation error (deg): {np.rad2deg(np.nanmean(results[robot.name].errors_rotation))}")
             print(f"average translation error (m): {np.nanmean(results[robot.name].errors_translation)}")
         
-        fig, ax = plt.subplots(3, 1, figsize=(8,10))
+        width = 3.487
+        height = .6*3.487
+        fig, ax = plt.subplots(3, 1, figsize=(width,height))
         fig, ax = results[robot.name].plot(line_kwargs={'linewidth': 2.5}, figax=(fig, ax))
         if show_passing_time:
             for axi in ax:
@@ -474,7 +480,10 @@ def main(args):
             file_extension = args.output.split('.')[-1]
             output_file = f"{args.output[:-(len(file_extension)+1)]}_{robot.name}.{file_extension}"
             plt.savefig(output_file, transparent=True, dpi=400)
-            # import ipdb; ipdb.set_trace()
+            pkl_path = f"{args.output[:-(len(file_extension)+1)]}_{robot.name}.pkl"
+            pkl_file = open(pkl_path, 'wb')
+            pickle.dump([fig, ax], pkl_file, -1)
+            pkl_file.close()
         elif not args.terse:
             plt.show()
           

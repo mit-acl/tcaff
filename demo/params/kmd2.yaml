@@ -39,7 +39,7 @@ mapping:
   dim: 5
   tau: 10.
   kappa: 150
-  nu: 3
+  nu: 2
   Q_el: .25
   P0_el: .25
   R_el: .5
@@ -49,7 +49,7 @@ mapping:
   P0_el_h: .25
   ts: .1
   zmin: 1.5
-  zmax: 7.
+  zmax: 8.
 
 tcaff:
   prob_no_match: .001
@@ -65,7 +65,7 @@ tcaff:
   # h_diff: 0.1
   # wh_scale_diff: 1.5
   # num_objs_req: 5
-  h_diff: 0.2
+  h_diff: 0.25
   wh_scale_diff: 1.5
   num_objs_req: 5
   ts: 1.
