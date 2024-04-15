@@ -9,7 +9,6 @@ from motlee.realign import frame_aligner
 from motlee.realign.object_map import ObjectMap
 from motlee.utils.transform import transform_2_xypsi, xypsi_2_transform
 
-SCALING = 1
 SE2_STORAGE_DIM = 3
 
 class TCAFFManager(FrameAlignFilter):
@@ -190,8 +189,8 @@ def setup_frame_align_filter(
 
     A = np.eye(3)
     H = np.eye(3)
-    Q = np.diag([.1, .1, .5*np.pi/180])*SCALING
-    P0 = np.diag([.5, .5, 2*np.pi/180])*SCALING
+    Q = np.diag([(.1)**2, .1**2, (.5*np.pi/180)**2])
+    P0 = np.diag([.5**2, .5**2, (5*np.pi/180)**2])
     
     KMD = False
     if KMD:
@@ -228,10 +227,10 @@ def setup_frame_align_filter(
     return frame_align_filter
 
 def setup_measurement_model():
-    R = np.array([[1.]])*SCALING
+    R = np.array([[1.]])
     R = block_diag(R, R, R)
-    R[:2,:2] *= .5
-    R[2:,2:] *= 2*np.pi/180
+    R[:2,:2] *= .5**2
+    R[2:,2:] *= (5*np.pi/180)**2
     KMD = False
     if KMD:
         R[:2,:2] *= 1

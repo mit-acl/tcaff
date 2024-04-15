@@ -16,8 +16,6 @@ try:
 except:
     from detections import Detections
 
-CENTROID_DIM = 3
-
 class Robot():
 
     def __init__(
@@ -66,8 +64,8 @@ class Robot():
         T_WB = self.pose_est_data.T_WB(t_closest)
         
         if len(zs) != 0:
-            zs_centroids = transform(T_WB, zs[:,:3].reshape((-1,3)), stacked_axis=0)
-            zs = np.hstack((zs_centroids, zs[:,3:])).reshape((-1,dim,1))
+            zs_centroids = transform(T_WB, zs[:,:dim-2].reshape((-1,dim-2)), stacked_axis=0)
+            zs = np.hstack((zs_centroids, zs[:,dim-2:])).reshape((-1,dim,1))
             Rs[:,:3,:3] = transform_covariances(T_WB, Rs[:,:3,:3])
 
             zs = [np.array(z) for z in zs.tolist()]
@@ -107,9 +105,10 @@ class Robot():
         
         track: Track
         for track in self.mapper.tracks:
-            centroids.append(track.state[:CENTROID_DIM, :].reshape(-1))
-            widths.append(track.state[CENTROID_DIM, :].reshape(-1))
-            heights.append(track.state[CENTROID_DIM+1, :].reshape(-1))
+            centroid_dim = self.mapper.dim_association - 2
+            centroids.append(track.state[:centroid_dim, :].reshape(-1))
+            widths.append(track.state[centroid_dim, :].reshape(-1))
+            heights.append(track.state[centroid_dim+1, :].reshape(-1))
             ages.append(track.ell)
         
         return ObjectMap(

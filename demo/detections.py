@@ -85,7 +85,7 @@ class FastSAM3DDetections(Detections):
     
 class DetectionData(RobotData, Detections):
 
-    def __init__(self, data_file, file_type, time_tol=1.0, t0=None, T_BC=np.eye(4), zmin=0., zmax=10.):
+    def __init__(self, data_file, file_type, time_tol=1.0, t0=None, T_BC=np.eye(4), zmin=0., zmax=10., R=np.eye(5)*.3**2, dim=3):
         super().__init__(time_tol=time_tol, interp=False)
         if file_type == 'json':
             self._extract_json_data(data_file)
@@ -96,6 +96,8 @@ class DetectionData(RobotData, Detections):
         self.T_BC = T_BC
         self.zmin = zmin
         self.zmax = zmax
+        self.R = R
+        self.dim = dim
         
     def _extract_json_data(self, json_file):
         """
@@ -118,11 +120,11 @@ class DetectionData(RobotData, Detections):
         detections = np.array(self._detections[self.idx(t)])
         if len(detections) == 0:
             return [], []
-        transformed_centroids = np.array([np.array(z).reshape(-1) for z in transform(self.T_BC, detections, stacked_axis=0).tolist()])
+        transformed_centroids = np.array([np.array(z).reshape(-1)[:self.dim-2] for z in transform(self.T_BC, detections, stacked_axis=0).tolist()])
         if len(self._widths) > 0 and len(self._heights) > 0:
             zs = np.hstack((transformed_centroids, np.array(self._widths[self.idx(t)]).reshape((-1,1)), np.array(self._heights[self.idx(t)]).reshape((-1,1))))
         
-        Rs = np.array([R_SHOULD_BE_PARAM for z in zs])
+        Rs = np.array([self.R.copy() for z in zs])
 
         # Rs = np.delete(Rs, np.bitwise_or(zs[:,0] > 15, zs[:,0] < 0.), axis=0) # TODO: < 1.5???
         # zs = np.delete(zs, np.bitwise_or(zs[:,0] > 15, zs[:,0] < 0.), axis=0)
