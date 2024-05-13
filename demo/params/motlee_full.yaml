@@ -84,7 +84,7 @@ RR08:
 
 
 pose_estimate:
-  root: "/home/masonbp/data/motlee_nov_2023/data/kimera_odom"
+  root: "$MOTLEE_DATASET/data/kimera_odom"
   topic: "kimera_vio_ros/odometry"
   T_postmultiply:
     RR01:
@@ -156,19 +156,13 @@ pose_estimate:
       - 0.0
       - 1.0
 
-
-# pose_estimate: 
-#   root: "/home/masonbp/data/motlee_jan_2024/00"
-#   topic: "world"
-#   frame: "FLU"
-
 pose_gt: 
-  root: "/home/masonbp/data/motlee_nov_2023/data/kimera_odom"
+  root: "$MOTLEE_DATASET/data/kimera_odom"
   topic: "world"
   frame: "FLU"
 
 fastsam3d_data:
-  root: "/home/masonbp/results/motlee_nov_2023/fastsam3D/01/copies"
+  root: "$MOTLEE_FASTSAM"
 
 mapping:
   dim: 5
