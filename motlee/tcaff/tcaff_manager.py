@@ -10,6 +10,7 @@ from motlee.realign.object_map import ObjectMap
 from motlee.utils.transform import transform_2_xypsi, xypsi_2_transform
 
 SE2_STORAGE_DIM = 3
+# TODO: expose all parameters here to outer levels!!!
 
 class TCAFFManager(FrameAlignFilter):
 
