@@ -1,6 +1,6 @@
-![motlee](./media/banner.png)
+<img src="./media/banner.png" alt="motlee" width="800"/>
 
-![experiment](./media/experiment.gif)
+<img src="./media/experiment.gif" alt="experiment" width="800"/>
 
 ## MOTLEE: <ins>M</ins>ulti-<ins>O</ins>bject <ins>T</ins>racking with <ins>L</ins>ocalization <ins>E</ins>rror <ins>E</ins>limination
 
@@ -14,7 +14,7 @@ This repo contains code for performing multi-object tracking (useful for both co
 
 If you use this code in your research, please cite our paper:
 
-Mason B. Peterson, Parker C. Lusk, Antonio Avila, and Jonathan P. How. "MOTLEE: Collaborative Multi-Object Tracking Using Temporal Consistency for Neighboring Robot Frame Alignment." arXiv preprint arXiv:2405.05210 (2024).
+Mason B. Peterson, Parker C. Lusk, Antonio Avila, and Jonathan P. How. "MOTLEE: Collaborative Multi-Object Tracking Using Temporal Consistency for Neighboring Robot Frame Alignment." arXiv preprint arXiv:2405.05210 (2024). ([pdf](https://arxiv.org/pdf/2405.05210))
 
 ```
 @article{peterson2024motlee,
