@@ -2,19 +2,14 @@ import numpy as np
 from numpy.linalg import inv
 from enum import Enum, auto
 
-# Install with extra align option in setup.py
-try:
-    import open3d as o3d
-    if o3d.__DEVICE_API__ == 'cuda':
-        import open3d.cuda.pybind.t.pipelines.registration as treg
-    else:
-        import open3d.cpu.pybind.t.pipelines.registration as treg
-except:
-    pass
+import open3d as o3d
+if o3d.__DEVICE_API__ == 'cuda':
+    import open3d.cuda.pybind.t.pipelines.registration as treg
+else:
+    import open3d.cpu.pybind.t.pipelines.registration as treg
 import clipperpy
 
 from motlee.utils.transform import T2d_2_T3d
-from motlee.utils.transform import transform as perform_transform
 from motlee.realign.wls import wls, wls_residual
 
 class AssocMethod(Enum):
@@ -32,18 +27,16 @@ class FrameAlignSolution():
     def __init__(
         self,
         success,
-        transform=None,
-        num_objs_associated=None,
-        transform_residual=None,
-        objective_score=None,
-        associated_objs=None
+        transform = None,
+        num_objs_associated = None,
+        transform_residual = None,
+        objective_score = None
     ):
         self.success = success
         self.transform = transform
         self.num_objs_associated = num_objs_associated
         self.transform_residual = transform_residual
         self.objective_score = objective_score
-        self.associated_objs = associated_objs
         
     def __str__(self):
         if not self.success:
@@ -57,8 +50,6 @@ class FrameAlignSolution():
             ret += f"Transform residual: {self.transform_residual}\n"
         if self.objective_score is not None:
             ret += f"Objective score: {self.objective_score}\n"
-        if self.associated_objs is not None:
-            ret += f"Associated objects: {self.associated_objs.T}"
         return ret
 
 class FrameAligner():
@@ -116,36 +107,33 @@ class FrameAligner():
         self.clipper_sparse_proportion = clipper_sparse_proportion
         self.clipper_sparse_max = clipper_sparse_max
         
-    def align_objects(self, static_objects=None, static_ages=None, static_put_assoc=None,
+    def align_objects(self, static_objects=None, static_ages=None, 
                       dynamic_objects=None, dynamic_weights=None, T_init_guess=None):
         """performs alignment on objects by associating objects and then running Aruns with weights
         based on the age of the object.
 
         Args:
-            static_objects (list(numpy.array, shape(n,2|3)), optional): list of first and second 
-                numpy array representing object point locations
-            static_ages (list(numpy.array, shape(n,)), optional): timesteps since objs1 were seen 
+            objs1 (numpy.array, shape(n,2|3)): set of object points
+            objs2 (numpy.array, shape(m,2|3)): second set object points
+            ages1 (numpy.array, shape(n), optional): timesteps since objs1 were seen 
                 if weighted algorithm is to be used. Defaults to None.
-            static_put_assoc (numpy.array, shape(m,2), type(int), optional): array representing 
-                indices of potential associations. Indices in i-th column  and j-th row 
-                corresponds to a match involving the j-th object of the i-th list from 
-                static_objects. Defaults to None.
-            dynamic_objects (list(numpy.array, shape(n,2|3)), optional): list of first and second 
-                numpy array representing object point locations
-            dynamic_weights (list(numpy.array, shape(n,)), optional): weights for dynamic object 
-                correspondences
+            ages2 (numpy.array, shape(m), optional): timesteps since objs2 were seen 
+                if weighted algorithm is to be used. Defaults to None.
             T_init_guess (numpy.array, shape(4,4), optional): Initial guess transform. Defaults to None.
+            association_method (str, optional): 'icp', 'clipper', or 'clipper_mult_sol'. Defaults to 'icp'.
+            required_objs_corres (int, optional): number of associated objects required to result 
+                in successful alignment. Defaults to 0.
 
         Returns:
-            numpy.array, shape(4,4): 3D transform that aligns objs2 with objs1
+            numpy.array, shape(4,4): 3D transform that aligns objs2 with objs2
             float: residual of alignment
             int: number of corresponding objects used for alignment
         """
         if static_objects is not None:
-            inliers, static_corres, static_weights, static_assoc_scores = self.associate_static_objects(static_objects, static_ages, T_init_guess, static_put_assoc)
+            static_corres, static_weights, static_assoc_scores = self.associate_static_objects(static_objects, static_ages, T_init_guess)
             solutions = []
                 
-            for i, (ins, sc, sw, ss) in enumerate(zip(inliers, static_corres, static_weights, static_assoc_scores)):
+            for i, (sc, sw, ss) in enumerate(zip(static_corres, static_weights, static_assoc_scores)):
                 if dynamic_objects is None:
                     solutions.append(self.compose_solution(sc[0], sc[1], sw))
                 else:
@@ -164,8 +152,6 @@ class FrameAligner():
                     objs1_all = np.vstack([sc[0], dynamic_objects[0]])
                     objs2_all = np.vstack([sc[1], dynamic_objects[1]])
                     solutions.append(self.compose_solution(objs1_all, objs2_all, weights_all))
-                if solutions[-1].success:
-                    solutions[-1].associated_objs = np.copy(ins)
                     solutions[-1].objective_score = ss
         elif dynamic_objects is not None:
             solutions = [self.compose_solution(dynamic_objects[0], dynamic_objects[1], dynamic_weights)]
@@ -178,15 +164,14 @@ class FrameAligner():
             assert len(solutions) == 1, solutions
             return solutions[0]
         
-    def associate_static_objects(self, static_objects, static_ages, T_init_guess, putative_assoc):
+    def associate_static_objects(self, static_objects, static_ages, T_init_guess):
         objs1, objs2 = static_objects
         ages1, ages2 = static_ages if static_ages is not None else (np.ones(objs1.shape[0]), np.ones(objs2.shape[0]))
         if 0 in objs1.shape or 0 in objs2.shape:
-            return None, [[np.array([]), np.array([])]], [np.array([])], [None if not self.method != AssocMethod.CLIPPER_MULT_SOL else 0.]
+            return [[np.array([]), np.array([])]], [np.array([])], [None if not self.method != AssocMethod.CLIPPER_MULT_SOL else 0.]
         if self.method == AssocMethod.ICP or \
             self.method == AssocMethod.ICP_STRONG_CORRES:
             assert T_init_guess is not None, "initial guess is required for ICP registration method"
-            assert putative_assoc is None, "putative associations cannot be used for ICP"
             objs1_reordered, objs2_del, weights1 = self.icp_data_association(objs1, objs2, T_init_guess, ages1, ages2)
             objs2_reordered, objs1_del, weights2 = self.icp_data_association(objs2, objs1, inv(T_init_guess), ages2, ages1)
             if objs1_reordered is None or objs2_reordered is None or objs1_del is None or objs2_del is None:
@@ -210,21 +195,20 @@ class FrameAligner():
             objs1_corres = np.delete(objs1_corres, to_delete, axis=0)
             objs2_corres = np.delete(objs2_corres, to_delete, axis=0)
             weights_corres = np.delete(weights_corres, to_delete, axis=0)
-            Ain = None # TODO: find inliniers
             
         elif self.method == AssocMethod.CLIPPER or \
             self.method == AssocMethod.CLIPPER_MULT_SOL or \
             self.method == AssocMethod.CLIPPER_SPARSE:
-            objs1 = np.array([o for o in objs1.tolist()])
-            objs2 = np.array([o for o in objs2.tolist()])
+            objs1 = np.array([o[:2] for o in objs1.tolist()])
+            objs2 = np.array([o[:2] for o in objs2.tolist()])
             if self.method == AssocMethod.CLIPPER or \
                 self.method == AssocMethod.CLIPPER_SPARSE:
-                Ain = self.clipper_data_association(objs1, objs2, putative_assoc)
+                Ain = self.clipper_data_association(objs1, objs2)
                 objs1_corres, objs2_corres, ages1_corres, ages2_corres = \
                     self.clipper_inlier_associations(Ain, objs1, objs2, ages1, ages2)
-                weights_corres = 1/(.01 + ages1_corres * ages2_corres)
+                weights_corres = 1/(.01 + ages1_corres**(1) * ages2_corres**(1))
             elif self.method == AssocMethod.CLIPPER_MULT_SOL:
-                Ains, scores = self.clipper_mult_sols(objs1, objs2, putative_assoc)
+                Ains, scores = self.clipper_mult_sols(objs1, objs2)
                 objs1_corres, objs2_corres, weights_corres = [], [], []
                 for Ain in Ains:
                     o1c, o2c, a1c, a2c = \
@@ -236,10 +220,9 @@ class FrameAligner():
                 # Ain = Ains[opt_idx]
         
         if self.method == AssocMethod.CLIPPER_MULT_SOL:
-            return Ains, [(o1c, o2c) for o1c, o2c in zip(objs1_corres, objs2_corres)], weights_corres, scores
+            return [(o1c, o2c) for o1c, o2c in zip(objs1_corres, objs2_corres)], weights_corres, scores
         else:
-            # TODO: get Ain for ICP
-            return [Ain], [(objs1_corres, objs2_corres)], [weights_corres], [None]    
+            return [(objs1_corres, objs2_corres)], [weights_corres], [None]    
         
     def compose_solution(self, objs1_corres, objs2_corres, weights_corres):
 
@@ -286,7 +269,7 @@ class FrameAligner():
                                 voxel_size)
         return reg_point_to_point
 
-    def clipper_data_association(self, detections1, detections2, putative_assoc=None):
+    def clipper_data_association(self, detections1, detections2):
         """
         Parameters
         ----------
@@ -308,11 +291,7 @@ class FrameAligner():
 
         n = len(detections1)
         m = len(detections2)
-        
-        if putative_assoc is None:
-            A = clipperpy.utils.create_all_to_all(n, m)
-        else:
-            A = putative_assoc.astype(np.int32)
+        A = clipperpy.utils.create_all_to_all(n, m)
         
         if self.method == AssocMethod.CLIPPER_SPARSE:
             num_assoc = min(int(self.clipper_sparse_proportion * A.shape[0]), self.clipper_sparse_max)
@@ -387,7 +366,7 @@ class FrameAligner():
         # return objs1_new, objs2_new, weights
         return objs1_reordered, objs2, weights
 
-    def realign_static_downweight(self, detections1, detections2, downweight_nodes=None, putative_assoc=None):
+    def realign_static_downweight(self, detections1, detections2, downweight_nodes=None):
         """
         Parameters
         ----------
@@ -413,23 +392,16 @@ class FrameAligner():
 
         n = len(detections1)
         m = len(detections2)
-        if putative_assoc is None:
-            A = clipperpy.utils.create_all_to_all(n, m)
-        else:
-            A = putative_assoc.astype(np.int32)
+        A = clipperpy.utils.create_all_to_all(n, m)
 
         clipper.score_pairwise_consistency(detections1.T, detections2.T, A)
         M_orig = clipper.get_affinity_matrix()
         if downweight_nodes is not None:
             M = M_orig.copy()
             C = clipper.get_constraint_matrix()
-            # for idx, downweight in downweight_nodes.items():
-            for idx, downweight in downweight_nodes:
-                # M[idx,:] *= downweight
-                # M[:,idx] *= downweight
-                row_indices, col_indices = np.meshgrid(idx, idx, indexing='ij')
-                if len(row_indices) != 0 and len(col_indices) != 0:
-                    M[row_indices,col_indices] *= downweight
+            for idx, downweight in downweight_nodes.items():
+                M[idx,:] *= downweight
+                M[:,idx] *= downweight
 
             clipper = clipperpy.CLIPPER(invariant, params)
             clipper.set_matrix_data(M=M, C=C)
@@ -449,7 +421,7 @@ class FrameAligner():
         
         return Ain, score, clipper.get_solution().nodes
         
-    def clipper_mult_sols(self, pts1, pts2, putative_assoc=None):
+    def clipper_mult_sols(self, pts1, pts2):
         """repeatedly reweights and reruns CLIPPER to search for close-to-optimal solutions
 
         Args:
@@ -468,72 +440,16 @@ class FrameAligner():
         
         for i in range(self.clipper_mult_repeats):
             if i == 0:
-                pairs, score, nodes = self.realign_static_downweight(pts1, pts2, putative_assoc=putative_assoc)
-                downweight_nodes = [(nodes, self.clipper_mult_downweight)]
+                pairs, score, nodes = self.realign_static_downweight(pts1, pts2)
+                downweight_nodes = {node: self.clipper_mult_downweight for node in nodes}
             else:
-                pairs, score, nodes = self.realign_static_downweight(pts1, pts2, putative_assoc=putative_assoc, downweight_nodes=downweight_nodes)
-                downweight_nodes.append((nodes, self.clipper_mult_downweight))
-                # for node in nodes:
-                #     if node not in downweight_nodes:
-                #         downweight_nodes[node] = 1.0
-                #     downweight_nodes[node] *= self.clipper_mult_downweight
+                pairs, score, nodes = self.realign_static_downweight(pts1, pts2, downweight_nodes=downweight_nodes)
+                for node in nodes:
+                    if node not in downweight_nodes:
+                        downweight_nodes[node] = 1.0
+                    downweight_nodes[node] *= self.clipper_mult_downweight
             all_scores.append(score)
             all_pairs.append(pairs)
             # objs0_corres, objs1_corres = get_inlier_associations(pts1, pts2, pairs)
 
         return all_pairs, all_scores
-    
-    def prune_putative_associations(self, shape1, shape2, prune_fun, A_init=None):
-        """
-        Takes an all to all association matrix and prunes out unlikely associations using the 
-            provided pruning function. An example of this would be pruning object associations by 
-            their relative size.
-
-        Args:
-            shape1 (int): Number of points in the first point set
-            shape2 (int): Number of points in the second point set
-            prune_fun (function, arity 2): function with arguments index1 and index2 which returns 
-                true if the correspondence between two points should be pruned, else false.
-            A_init (np.array, type(int), shape(n,2)): list of pairs of associations between 
-                dataset 1 and 2
-
-        Returns:
-            np.array (int), shape (n,2): Putative associations
-        """
-        if A_init is None:
-            A_all = np.zeros((shape1 * shape2, 2)).astype(np.int64)
-            A_i = 0
-            for i in range(shape1):
-                for j in range(shape2):
-                    A_all[A_i,:] = [i, j]
-                    A_i += 1
-            A_init = A_all
-
-        to_delete = []
-        for i, pair in enumerate(A_init):
-            if prune_fun(pair[0], pair[1]):
-                to_delete.append(i)
-                
-        A_put = np.delete(A_init, to_delete, axis=0)
-        return A_put
-    
-    def plot_solution(self, pts1: np.array, pts2: np.array, solution: FrameAlignSolution, format1={}, format2={}):
-
-        def subplot(ax, pts1, pts2, associations):
-            ax.plot(pts1[:,0], pts1[:,1], '.', **format1)
-            ax.plot(pts2[:,0], pts2[:,1], '.', **format2)
-            for corres in associations:
-                ax.plot([pts1[corres[0], 0], pts2[corres[1],0]], 
-                        [pts1[corres[0], 1], pts2[corres[1],1]], color='cyan')
-
-        import matplotlib.pyplot as plt
-        fig, ax = plt.subplots(1,2)
-
-        subplot(ax[0], pts1, pts2, solution.associated_objs)
-        subplot(ax[1], pts1, perform_transform(solution.transform, pts2, stacked_axis=0), solution.associated_objs)
-        ax[0].set_aspect('equal')
-        ax[1].set_aspect('equal')
-
-        return fig, ax
-        
-

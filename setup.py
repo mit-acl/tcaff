@@ -12,14 +12,15 @@ setup(
     install_requires=['numpy',
                         'matplotlib',
                         'scipy',
+                        'pandas',
+                        'gtsam',
                         'pyyaml',
                         'opencv-python',
                         'tqdm',
                         'motmetrics',
+                        'bagpy',
+                        'open3d==0.17.0'
                       ],
-    extras_require={
-        'align': ['open3d==0.17.0',]
-    },
 
     # classifiers=[
     #     'Development Status :: 1 - Planning',

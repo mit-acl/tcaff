@@ -80,24 +80,21 @@ def get_realign_debug_dict(frametime, mot1, mot2, detections1, detections2, T_fi
     d['frametime'] = frametime
     return d
     
-def dump_everything_in_the_whole_world(frametime, framenum, rovers, mots, rover_pose_gt, rover_pose_est, camera_params, gt_list):
+def dump_everything_in_the_whole_world(frametime, framenum, rovers, mots, detections, gt_list):
     d = dict()
     d['frametime'] = frametime
     d['framenum'] = framenum
     d['rovers'] = dict()
     d['groundtruth'] = gt_list
     
-    for r, m, in zip(rovers, mots):
+    for r, m, det in zip(rovers, mots, detections):
         r_dict = dict()
-        r_dict['T_WC'] = (rover_pose_gt[r].T_WB(frametime) @ camera_params[r]['l515'].T).reshape(-1).tolist()
-        r_dict['T_WC_bel'] = (rover_pose_est[r].T_WB(frametime) @ camera_params[r]['l515'].T).reshape(-1).tolist()
+        r_dict['T_WC'] = det.T_WC(frametime, T_BC=det.T_BC, true_pose=True).reshape(-1).tolist()
+        r_dict['T_WC_bel'] = det.T_WC(frametime, T_BC=det.T_BC, true_pose=False).reshape(-1).tolist()
         r_dict['tracks'] = m.get_tracks(format='list')
         r_dict['T_fix'] = dict()
         for r_id, T in m.neighbor_frame_align.items():
-            if T is None:
-                r_dict['T_fix'][r_id] = (np.ones(16)*np.nan).tolist()
-            else:
-                r_dict['T_fix'][r_id] = T.reshape(-1).tolist()
+            r_dict['T_fix'][r_id] = T.reshape(-1).tolist()
         d['rovers'][r] = r_dict
     return d
 

@@ -1,9 +1,19 @@
 import numpy as np
 from numpy.linalg import norm as norm, inv
 from scipy.optimize import linear_sum_assignment
+from scipy.spatial.transform import Rotation as Rot
+from scipy.linalg import logm
 from copy import deepcopy
 
 from motlee.mot.track import Track
+from motlee.realign.frame_align_filter import FrameAlignFilter
+from motlee.utils.transform import transform
+
+NUM_CAMS = 4
+COV_MAG = .01
+USE_NLML = True
+MERGE_RANGE_M = .15
+
 class MultiObjectTracker():
 
     def __init__(
@@ -16,10 +26,7 @@ class MultiObjectTracker():
         alpha=2000,
         kappa=10,
         nu=3,
-        track_storage_size=1,
-        dim_association=2,
-        merge_range_m=0.0,
-        use_nlml=True
+        track_storage_size=1
     ):
         
         """_summary_
@@ -49,14 +56,13 @@ class MultiObjectTracker():
         self.alpha = alpha
         self.kappa = kappa
         self.track_storage_size = track_storage_size
-        self.dim_association = dim_association
         
         self.tracks = []
         self.new_tracks = []
         self.old_tracks = []
         self.next_available_id = 0
         self.n_meas_to_init_track = nu
-        self.merge_range_m = merge_range_m
+        self.merge_range_m = MERGE_RANGE_M
         
         self.camera_id = camera_id
         self.track_mapping = dict()
@@ -64,16 +70,15 @@ class MultiObjectTracker():
         self.inconsistencies = 0
         self.groups_by_id = []
         self.recent_detection_list = []
+        self.cov = np.eye(4) * COV_MAG
         for i in range(50):
             self.recent_detection_list.append(None)
             
         self.pose = None
         self.neighbor_poses = {c: None for c in self.connected_cams}
-        # frame aligns are transformations T_self_neighbor from neighbor to self odom frame
         self.neighbor_frame_align = {c: None for c in self.connected_cams}
         self.neighbor_frame_align_cov = {c: None for c in self.connected_cams}
         self.MDs = []
-        self.use_nlml = use_nlml
 
     def local_data_association(self, Zs, feature_vecs, Rs):
         self.MDs = []
@@ -87,7 +92,7 @@ class MultiObjectTracker():
             for i in range(len(Zs)):
                 for j in range(len(Zs)):
                     if i == j: continue
-                    if norm(Zs[i][:self.dim_association,:] - Zs[j][:self.dim_association,:]) < self.merge_range_m:
+                    if norm(Zs[i][:2,:] - Zs[j][:2,:]) < self.merge_range_m:
                         need_to_merge = True
                         break
                 if need_to_merge:
@@ -98,25 +103,24 @@ class MultiObjectTracker():
         
         frame_detections = []
         for z in Zs:
-            frame_detections.append(z[:self.dim_association,:].reshape(-1,1))
+            frame_detections.append(z[0:2,:].reshape(-1,1))
         all_tracks = self.tracks + self.new_tracks
         geometry_scores = np.zeros((len(all_tracks), len(Zs)))
         large_num = 1000
         for i, track in enumerate(all_tracks):
-            Hx_xy = (track.H @ track.xbar)[:self.dim_association,:]
+            Hx_xy = (track.H @ track.xbar)[0:2,:]
             for j, (Z, aj, R) in enumerate(zip(Zs, feature_vecs, Rs)):
-                z_xy = Z[:self.dim_association,:]
-                V = track.P[:z_xy.shape[0],:z_xy.shape[0]] + R
+                z_xy = Z[0:2,:]
+                V = track.P[:2,:2] + R
                 # Mahalanobis distance
                 d = np.sqrt((z_xy - Hx_xy).T @ np.linalg.inv(V) @ (z_xy - Hx_xy)).item(0)
                 self.MDs.append(d)
                 
                 # Geometry similarity value
-                if self.use_nlml:
-                    d = (self.dim_association*np.log(2*np.pi) + d**2 + np.log(np.linalg.det(V)))
-                    
                 if not d < self.Tau_LDA:
                     s_d = large_num
+                elif USE_NLML:
+                    s_d = 1/self.alpha*(2*np.log(2*np.pi) + d**2 + np.log(np.linalg.det(V)))
                 else:
                     s_d = 1/self.alpha*d
                 if np.isnan(s_d):
@@ -194,11 +198,11 @@ class MultiObjectTracker():
         geometry_scores = np.zeros((len(self.unassociated_obs), len(self.unassociated_obs + tracked_states)))
         # TODO: This iteration stuff happens in three places now. Clean up and put in some function
         for i in range(len(self.unassociated_obs)):
-            xi_xy = self.unassociated_obs[i].xbar[:self.dim_association,:]
+            xi_xy = self.unassociated_obs[i].xbar[0:2,:]
             for j in range(len(self.unassociated_obs)):
                 if i == j:
                     continue
-                xj_xy = self.unassociated_obs[j].xbar[:self.dim_association,:]
+                xj_xy = self.unassociated_obs[j].xbar[0:2,:]
                 # distance
                 d = np.sqrt((xi_xy - xj_xy).T @ (xi_xy - xj_xy)).item(0)
                 
@@ -208,7 +212,7 @@ class MultiObjectTracker():
                 
             for j in range(len(tracked_states)):
                 j_gs = j+len(self.unassociated_obs) # j for indexing into geometry_scores
-                xj_xy = tracked_states[j].xbar[:self.dim_association,:]
+                xj_xy = tracked_states[j].xbar[0:2,:]
                 # distance
                 d = np.sqrt((xi_xy - xj_xy).T @ (xi_xy - xj_xy)).item(0)
                 
@@ -233,39 +237,24 @@ class MultiObjectTracker():
             track_obs = track.get_measurement_info(track.R)
             for cam in self.connected_cams:
                 R = np.copy(track.R)
-                if cam in self.neighbor_frame_align:
-                    # T from self odom to neighboring odom frame
-                    T_neighbor_self = inv(self.neighbor_frame_align[cam])
-                else:
-                    # T from self odom to neighboring odom frame
-                    T_neighbor_self = np.eye(4)
-                # No known transformation between two agents' frames
-                if np.any(np.isnan(T_neighbor_self)):
-                    continue
-
                 if track_obs.zs is not None:
-                    z = track_obs.zs[0].reshape(-1)[:self.dim_association]
-                    # Jac_T = np.array([
-                    #     [1.0, 0.0, -(z.item(1) - self.neighbor_poses[cam][1,3])], # should be expressed in body frame, not world frame
-                    #     [0.0, 1.0, (z.item(0) - self.neighbor_poses[cam][0,3])], # 
-                    # ])
-                    # Jac_R = inv(self.neighbor_frame_align[cam])[:2,:2].T
-                    # Sigma_fa = self.neighbor_frame_align_cov[cam][:3, :3]
-                    # # R = Jac_T @ (Sigma_fa) @ Jac_T.T + Jac_R @ R @ Jac_R.T
-                    # R = Jac_R @ (Jac_T @ (Sigma_fa) @ Jac_T.T + R) @ Jac_R.T
-
-                    Jac_plus_1 = np.array([
-                        [1.0, 0.0, -z.item(1)], 
-                        [0.0, 1.0, z.item(0)], 
-                        [0.0, 0.0, 1.0],
+                    # This needs to be fixed so that it is correct when being sent to other camera (rather than
+                    # being written for being received)
+                    z = track_obs.zs[0].reshape(-1)[:2]
+                    Jac_T = np.array([
+                        [1.0, 0.0, -(z.item(1) - self.neighbor_poses[cam][1,3])], # should be expressed in body frame, not world frame
+                        [0.0, 1.0, (z.item(0) - self.neighbor_poses[cam][0,3])], # 
                     ])
-                    Jac_plus_2 = T_neighbor_self[:2,:2].T # transpose makes this the rotation from neighbor to self
-                    Sigma = self.neighbor_frame_align_cov[cam]
-                    
-                    R = (Jac_plus_1 @ Sigma @ Jac_plus_1.T)[:2,:2] + Jac_plus_2 @ R @ Jac_plus_2.T
+                    Jac_R = inv(self.neighbor_frame_align[cam])[:2,:2].T
+                    Sigma_fa = self.neighbor_frame_align_cov[cam][:3, :3]
+                    # R = Jac_T @ (Sigma_fa) @ Jac_T.T + Jac_R @ R @ Jac_R.T
+                    R = Jac_R @ (Jac_T @ (Sigma_fa) @ Jac_T.T + R) @ Jac_R.T
                     R = (R.T + R) / 2 # keep PD
-
-                obs = track.get_measurement_info(R, T=T_neighbor_self) # TODO: figure out R
+                if cam in self.neighbor_frame_align:
+                    T = inv(self.neighbor_frame_align[cam])
+                else:
+                    T = np.eye(4)
+                obs = track.get_measurement_info(R, T=T) # TODO: figure out R
                 obs.add_destination(cam)
                 observations.append(obs)
         return observations
@@ -302,14 +291,12 @@ class MultiObjectTracker():
                     self.unassociated_obs.append(obs)
         return len(self.unassociated_obs)
             
-    def get_tracks(self, format='state_color', include_track_fun=lambda x : True):
+    def get_tracks(self, format='state_color'):
         # TODO: change what we're returning here
         if format == 'state_color':
             Xs = []
             colors = []
             for track in self.tracks:
-                if not include_track_fun(track):
-                    continue
                 assert track.id[0] == self.camera_id
                 Xs.append(track.state)
                 colors.append(track.color)
@@ -317,16 +304,12 @@ class MultiObjectTracker():
         elif format == 'dict':
             track_dict = dict()
             for track in self.tracks:
-                if not include_track_fun(track):
-                    continue
-                track_dict[track.id] = np.array(track.state[:self.dim_association,:].reshape(-1))
+                track_dict[track.id] = np.array(track.state[0:2,:].reshape(-1))
             return track_dict
         elif format == 'list':
             track_list = []
             for track in self.tracks:
-                if not include_track_fun(track):
-                    continue
-                track_list.append(track.state[:self.dim_association,:].reshape(-1).tolist())
+                track_list.append(track.state[0:2,:].reshape(-1).tolist())
             return track_list
         else:
             print('you cannot do that')
