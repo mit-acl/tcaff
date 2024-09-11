@@ -11,7 +11,7 @@ from typing import Dict, List
 from motlee.utils.transform import transform
 from motlee.utils.cam_utils import is_viewable
 
-from robot_utils.robot_data import PoseData
+from robotdatapy.data import PoseData
 
 class DemoViz():
 

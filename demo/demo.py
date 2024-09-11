@@ -16,9 +16,9 @@ from motlee.utils.transform import xypsi_2_transform
 from motlee.realign.object_map import ObjectMap
 from motlee.realign.frame_aligner import FrameAlignSolution
 
-from robot_utils.robot_data.robot_data import NoDataNearTimeException
-from robot_utils.robot_data.pose_data import PoseData
-from robot_utils.transform import T_FLURDF, T_RDFFLU, transform, transform_2_xytheta, T3d_2_T2d
+from robotdatapy.exceptions import NoDataNearTimeException
+from robotdatapy.data import PoseData
+from robotdatapy.transform import T_FLURDF, T_RDFFLU, transform, transform_to_xytheta, T3d_2_T2d
 from plot_utils import square_equal_aspect, plot_pose2d
 
 try:
@@ -77,9 +77,8 @@ def main(args):
                 T_postmultiply = np.linalg.inv(np.array(params[pose_type]['T_postmultiply'][name]).reshape((4,4)))
             else:
                 T_postmultiply = None
-            pose_data[pose_type] = PoseData(
-                data_file=f"{os.path.expandvars(params[pose_type]['root'])}/{name}.bag",
-                file_type='bag',
+            pose_data[pose_type] = PoseData.from_bag(
+                path=f"{os.path.expandvars(params[pose_type]['root'])}/{name}.bag",
                 topic=f"/{name}/{params[pose_type]['topic']}",
                 time_tol=10.,
                 interp=True,
@@ -218,7 +217,7 @@ def main(args):
     ###################################################
 
     avg_trans_err = np.mean([np.linalg.norm(T_err[:2,3]) for T_err in T_errs])
-    avg_rot_err = np.mean(np.abs([transform_2_xytheta(T_err)[2] for T_err in T_errs]))
+    avg_rot_err = np.mean(np.abs([transform_to_xytheta(T_err)[2] for T_err in T_errs]))
     print("Final results:")
     if np.any(np.isnan([np.nanmean(results[r1.name][r2.name].errors_rotation) for r1 in robots for r2 in robots if r1 != r2])):
         print("Alignment failed for at least one robot")

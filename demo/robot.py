@@ -8,8 +8,9 @@ from motlee.mot.track import Track
 from motlee.utils.transform import transform, transform_covariances
 from motlee.realign.object_map import ObjectMap
 
-from robot_utils.robot_data.pose_data import PoseData
-from robot_utils.robot_data.img_data import ImgData, CameraParams
+from robotdatapy.data import PoseData
+from robotdatapy.data import ImgData
+from robotdatapy.camera import CameraParams
 
 try:
     from .detections import Detections
