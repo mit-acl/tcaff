@@ -162,7 +162,7 @@ pose_gt:
   frame: "FLU"
 
 fastsam3d_data:
-  root: "$MOTLEE_FASTSAM"
+  root: "$MOTLEE_DATASET/fastsam_data"
 
 mapping:
   dim: 5

@@ -5,5 +5,5 @@
     "python.analysis.extraPaths": [
         "/opt/ros/foxy/lib/python3.8/site-packages"
     ],
-    "workbench.colorTheme": "Monokai"
+    "workbench.colorTheme": "Default Dark+"
 }
