@@ -52,27 +52,6 @@ make
 make pip-install
 ```
 
-The demo also depends on yolov7:
-
-```
-pip install yolov7-package
-```
-robotdatapy:
-```
-git clone git@github.com:mbpeterson70/robotdatapy.git
-cd robotdatapy
-pip install .
-```
-plot_utils:
-```
-git clone git@github.com:mbpeterson70/plot_utils.git
-cd robot_utils
-pip install .
-```
-and FastSAM which can be found at: https://github.com/CASIA-IVA-Lab/FastSAM with instructions to install. ***The repo should be on commit `4d153e9`.***
-
-
-
 # Running
 
 After downloading the MOTLEE dataset, the demo can be run with the following commands (after `cd`ing into this repo):
@@ -81,7 +60,7 @@ After downloading the MOTLEE dataset, the demo can be run with the following com
 mkdir results
 python3 ./demo/demo.py --params ./demo/params/motlee_full.yaml --output ./results/motlee_full.png
 ```
-For the code to recognize the dataset these environmet variable should be set:
+For the code to recognize the dataset this environment variable should be set:
 ```
 export MOTLEE_DATASET=<path to motlee dataset>
 ```
