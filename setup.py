@@ -16,6 +16,11 @@ setup(
                         'opencv-python',
                         'tqdm',
                         'motmetrics',
+                        'yolov7-package',
+                        'scikit-image',
+                        'fastsam @ git+ssh://git@github.com/CASIA-IVA-Lab/FastSAM@4d153e9',
+                        'robotdatapy @ git+ssh://git@github.com/mbpeterson70/robotdatapy@0e7853d',
+                        'plot_utils @ git+ssh://git@github.com/mbpeterson70/plot_utils@fab133e',
                       ],
     extras_require={
         'align': ['open3d==0.17.0',]

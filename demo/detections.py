@@ -6,9 +6,11 @@ import json
 from motlee.utils.transform import transform
 from motlee.realign.object_map import ObjectMap
 
-from robot_utils.robot_data.robot_data import NoDataNearTimeException, RobotData
-from robot_utils.robot_data.img_data import ImgData, CameraParams
-from fastsam3D.fastsam3D import FastSAM3D
+from robotdatapy.exceptions import NoDataNearTimeException
+from robotdatapy.data import RobotData, ImgData
+from robotdatapy.camera import CameraParams
+# from fastsam3D.fastsam3D import FastSAM3D
+from motlee.fastsam3D.fastsam3D import FastSAM3D
 
 try:
     from .person_detector_3d import PersonDetector3D

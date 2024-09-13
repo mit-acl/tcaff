@@ -60,6 +60,10 @@ After downloading the MOTLEE dataset, the demo can be run with the following com
 mkdir results
 python3 ./demo/demo.py --params ./demo/params/motlee_full.yaml --output ./results/motlee_full.png
 ```
+For the code to recognize the dataset this environment variable should be set:
+```
+export MOTLEE_DATASET=<path to motlee dataset>
+```
 
 # Dataset
 
