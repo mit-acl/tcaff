@@ -10,9 +10,9 @@ from yolov7_package import Yolov7Detector
 
 from fastsam import FastSAMPrompt
 from fastsam import FastSAM
-from fastsam3D.utils import compute_blob_mean_and_covariance, plotErrorEllipse
-import fastsam3D.segment_qualification as seg_qual
-from fastsam3D.depth_mask_2_centroid import depth_mask_2_centroid, mask_depth_2_width_height
+from motlee.fastsam3D.utils import compute_blob_mean_and_covariance, plotErrorEllipse
+import motlee.fastsam3D.segment_qualification as seg_qual
+from motlee.fastsam3D.depth_mask_2_centroid import depth_mask_2_centroid, mask_depth_2_width_height
 
 
 class FastSAM3D():

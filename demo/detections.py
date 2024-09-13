@@ -10,7 +10,7 @@ from robotdatapy.exceptions import NoDataNearTimeException
 from robotdatapy.data import RobotData, ImgData
 from robotdatapy.camera import CameraParams
 # from fastsam3D.fastsam3D import FastSAM3D
-from motlee.fastsam3d.fastsam3D import FastSAM3D
+from motlee.fastsam3D.fastsam3D import FastSAM3D
 
 try:
     from .person_detector_3d import PersonDetector3D
