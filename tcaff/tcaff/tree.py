@@ -1,6 +1,6 @@
 import numpy as np
 from copy import deepcopy
-from motlee.tcaff.node import Node
+from tcaff.tcaff.node import Node
 
 SPEEDUP_TRICK = True
 DIFF_TOL = np.array([2., 2., .7])

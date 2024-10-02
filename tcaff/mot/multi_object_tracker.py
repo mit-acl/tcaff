@@ -3,7 +3,8 @@ from numpy.linalg import norm as norm, inv
 from scipy.optimize import linear_sum_assignment
 from copy import deepcopy
 
-from motlee.mot.track import Track
+from tcaff.mot.track import Track
+
 class MultiObjectTracker():
 
     def __init__(

@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='motlee',
+    name='tcaff',
     version='0.1.0',    
     description='Multiple Object Tracking with Localization Error Elimination',
     url='https://gitlab.com/mit-acl/dmot/motlee',

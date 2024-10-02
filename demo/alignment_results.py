@@ -2,9 +2,9 @@ from dataclasses import dataclass, field
 import numpy as np
 from typing import List
 import matplotlib.pyplot as plt
-from motlee.tcaff.se2_align_plot import se2_align_plot
-from motlee.tcaff.tcaff_manager import TCAFFManager
-from motlee.utils.transform import transform_2_xypsi, xypsi_2_transform
+from tcaff.tcaff.se2_align_plot import se2_align_plot
+from tcaff.tcaff.tcaff_manager import TCAFFManager
+from tcaff.utils.transform import transform_2_xypsi, xypsi_2_transform
 
 @dataclass
 class AlignmentResults():

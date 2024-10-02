@@ -13,9 +13,9 @@ except:
     pass
 import clipperpy
 
-from motlee.utils.transform import T2d_2_T3d
-from motlee.utils.transform import transform as perform_transform
-from motlee.realign.wls import wls, wls_residual
+from tcaff.utils.transform import T2d_2_T3d
+from tcaff.utils.transform import transform as perform_transform
+from tcaff.realign.wls import wls, wls_residual
 
 class AssocMethod(Enum):
     ICP = auto()

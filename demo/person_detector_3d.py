@@ -1,6 +1,6 @@
 import numpy as np
 from yolov7_package import Yolov7Detector
-from motlee.utils.cam_utils import depth_mask_2_centroid
+from tcaff.utils.cam_utils import depth_mask_2_centroid
 
 class PersonDetector3D():
     
