@@ -301,6 +301,7 @@ class FrameAligner():
         iparams = clipperpy.invariants.EuclideanDistanceParams()
         iparams.sigma = self.sigma
         iparams.epsilon = self.epsilon
+        iparams.mindist = 0.0
         invariant = clipperpy.invariants.EuclideanDistance(iparams)
 
         params = clipperpy.Params()
