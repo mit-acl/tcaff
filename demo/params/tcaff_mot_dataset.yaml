@@ -84,7 +84,7 @@ RR08:
 
 
 pose_estimate:
-  root: "$MOTLEE_DATASET/data/kimera_odom"
+  root: "$TCAFF_MOT_DATASET/data/kimera_odom"
   topic: "kimera_vio_ros/odometry"
   T_postmultiply:
     RR01:
@@ -157,12 +157,12 @@ pose_estimate:
       - 1.0
 
 pose_gt: 
-  root: "$MOTLEE_DATASET/data/kimera_odom"
+  root: "$TCAFF_MOT_DATASET/data/kimera_odom"
   topic: "world"
   frame: "FLU"
 
 fastsam3d_data:
-  root: "$MOTLEE_DATASET/fastsam_data"
+  root: "$TCAFF_MOT_DATASET/fastsam_data"
 
 mapping:
   dim: 5

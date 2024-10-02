@@ -6,7 +6,7 @@ try:
 except:
     from robot import Robot
 
-class MOTLEEDataProcessor():
+class TCAFFDataProcessor():
 
     def __init__(
             self, 

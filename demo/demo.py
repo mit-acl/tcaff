@@ -22,13 +22,13 @@ from robotdatapy.transform import T_FLURDF, T_RDFFLU, transform, transform_to_xy
 from plot_utils import square_equal_aspect, plot_pose2d
 
 try:
-    from .motlee_data_processor import MOTLEEDataProcessor
+    from .tcaff_data_processory import TCAFFDataProcessor
     from .robot import Robot
     from .detections import DetectionData
     from .alignment_results import AlignmentResults
     from .rover_artist import RoverArtist
 except:
-    from motlee_data_processor import MOTLEEDataProcessor
+    from tcaff_data_processory import TCAFFDataProcessor
     from robot import Robot
     from detections import DetectionData
     from alignment_results import AlignmentResults
@@ -164,11 +164,11 @@ def main(args):
         tf = np.min([robot.pose_est_data.tf for robot in robots])
         
     ###################################################
-    #                Run MOTLEE                       #
+    #                 Run TCAFF                       #
     ###################################################
 
     # Create the data processor
-    motlee_data_processor = MOTLEEDataProcessor(
+    tcaff_data_processor = TCAFFDataProcessor(
         robots=robots,
         mapping_ts=params['mapping']['ts'],
         frame_align_ts=params['tcaff']['ts'],
@@ -183,8 +183,8 @@ def main(args):
     printed_err = {robot.name: False for robot in robots}
 
     for t in tqdm(np.arange(t0, tf, params['mapping']['ts']/10)):
-        motlee_data_processor.update(t)
-        if motlee_data_processor.fa_updated:
+        tcaff_data_processor.update(t)
+        if tcaff_data_processor.fa_updated:
 
             for i, ego_name in enumerate(robot_names):
                 for j, other_name in enumerate(robot_names):

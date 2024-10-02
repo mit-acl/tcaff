@@ -4,7 +4,7 @@ setup(
     name='tcaff',
     version='0.1.0',    
     description='Multiple Object Tracking with Localization Error Elimination',
-    url='https://gitlab.com/mit-acl/dmot/motlee',
+    url='https://github.com/mit-acl/tcaff',
     author='Mason Peterson, Parker Lusk',
     author_email='masonbp@mit.edu, parkerclusk@gmail.com',
     license='MIT',

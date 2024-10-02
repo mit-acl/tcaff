@@ -1,6 +1,3 @@
-# Last call:
-# python3 dynamic_video.py --fps 4 --show-times -o /home/masonbp/results/motlee_nov_2023/videos/tcaff_035_new.mp4 --rate 2. 
-
 import matplotlib.pyplot as plt
 from matplotlib.transforms import Affine2D
 import numpy as np
