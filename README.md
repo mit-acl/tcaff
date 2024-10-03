@@ -7,7 +7,7 @@ TCAFF considers potential alignments from associating sparse, open-set object ma
 
 This repo contains code for aligning frames using TCAFF as well as an example application of using TCAFF while performing collaborative multi-object tracking on a dataset of four robots tracking six pedestrians (see [below](#dataset) for access to our dataset).
 
-![experiment](./media/experiment.gif)
+<img src="./media/experiment.gif" alt="experiment" width="800"/>
 
 # Citation
 
