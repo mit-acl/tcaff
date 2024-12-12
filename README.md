@@ -1,4 +1,4 @@
-# TCAFF: Temporally Consistency for Robot Frame Alignment
+# TCAFF: Temporal Consistency for Robot Frame Alignment
 
 ![banner](./media/tcaff_overview.png)
 
