@@ -53,6 +53,6 @@ The TCAFF MOT dataset of four robots/six pedestrian object tracking experiment a
 
 # Acknowledgements
 
-TCAFF was supported by the Ford Motor Company and by ARL DCIST.
+TCAFF was supported by the Ford Motor Company, ONR, and ARL DCIST.
 
 
