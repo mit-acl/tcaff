@@ -11,7 +11,18 @@ This repo contains code for aligning frames using TCAFF as well as an example ap
 
 # Citation
 
-If you use this code in your research, please cite our paper, which will be released soon.
+If you use this code in your research, please cite our paper:
+
+M.B. Peterson, P.C. Lusk, A. Avila and J.P. How, "TCAFF: Temporal Consistency for Robot Frame Alignment," ICRA 2025.
+
+```
+@article{peterson2024tcaff,
+  title={TCAFF: Temporal Consistency for Robot Frame Alignment},
+  author={Peterson, Mason B and Lusk, Parker C and Avila, Antonio and How, Jonathan P},
+  journal={arXiv preprint arXiv:2405.05210},
+  year={2024}
+}
+```
 
 # Installation
 
