@@ -16,11 +16,13 @@ If you use this code in your research, please cite our paper:
 M.B. Peterson, P.C. Lusk, A. Avila and J.P. How, "TCAFF: Temporal Consistency for Robot Frame Alignment," ICRA 2025.
 
 ```
-@article{peterson2024tcaff,
-  title={TCAFF: Temporal Consistency for Robot Frame Alignment},
+@inproceedings{peterson2025tcaff,
+  title={{TCAFF: Temporal Consistency for Robot Frame Alignment}},
   author={Peterson, Mason B and Lusk, Parker C and Avila, Antonio and How, Jonathan P},
-  journal={arXiv preprint arXiv:2405.05210},
-  year={2024}
+  booktitle={2025 IEEE International Conference on Robotics and Automation (ICRA)},
+  pages={15821--15827},
+  year={2025},
+  organization={IEEE}
 }
 ```
 
